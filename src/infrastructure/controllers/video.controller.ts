@@ -443,7 +443,7 @@ export class VideoController implements Routes {
               resultDiv.innerHTML = '📤 Upload du fichier en cours...'
 
               try {
-                const response = await fetch('/upload-audio', {
+                const response = await fetch('/api/v1/upload-audio', {
                   method: 'POST',
                   body: formData
                 })
