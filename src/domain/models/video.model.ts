@@ -1,0 +1,116 @@
+import { z } from 'zod'
+
+export const VideoSchema = z.object({
+  id: z.number().optional(),
+  title: z.string(),
+  originalFilename: z.string(),
+  filePath: z.string(),
+  fileSize: z.number(),
+  language: z.string().default('de'),
+  transcriptionStatus: z.enum(['pending', 'processing', 'completed', 'failed']).default('pending'),
+  queueJobId: z.string().optional(),
+  errorMessage: z.string().optional(),
+  tempInfoFile: z.string().optional(),
+  transcriptionFile: z.string().optional(),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional(),
+  processedAt: z.date().optional()
+})
+
+export type Video = z.infer<typeof VideoSchema>
+
+export class VideoModel {
+  constructor(private data: Video) {
+    VideoSchema.parse(data)
+  }
+
+  get id() {
+    return this.data.id
+  }
+
+  get title() {
+    return this.data.title
+  }
+
+  get originalFilename() {
+    return this.data.originalFilename
+  }
+
+  get filePath() {
+    return this.data.filePath
+  }
+
+  get fileSize() {
+    return this.data.fileSize
+  }
+
+  get language() {
+    return this.data.language
+  }
+
+  get transcriptionStatus() {
+    return this.data.transcriptionStatus
+  }
+
+  get tempInfoFile() {
+    return this.data.tempInfoFile
+  }
+
+  get transcriptionFile() {
+    return this.data.transcriptionFile
+  }
+
+  get processedAt() {
+    return this.data.processedAt
+  }
+
+  get errorMessage() {
+    return this.data.errorMessage
+  }
+
+  get createdAt() {
+    return this.data.createdAt
+  }
+
+  get updatedAt() {
+    return this.data.updatedAt
+  }
+
+  static create(data: Omit<Video, 'id'>) {
+    return new VideoModel(data)
+  }
+
+  updateStatus(
+    status: Video['transcriptionStatus'],
+    data?: {
+      jobId?: string
+      errorMessage?: string
+      transcriptionFile?: string
+    }
+  ) {
+    this.data.transcriptionStatus = status
+    this.data.updatedAt = new Date()
+
+    if (data?.jobId) {
+      this.data.queueJobId = data.jobId
+    }
+
+    if (data?.errorMessage) {
+      this.data.errorMessage = data.errorMessage
+    }
+
+    if (data?.transcriptionFile) {
+      this.data.transcriptionFile = data.transcriptionFile
+    }
+
+    if (status === 'completed') {
+      this.data.processedAt = new Date()
+    }
+
+    return this
+  }
+
+  toJSON(): Video {
+    return this.data
+  }
+}

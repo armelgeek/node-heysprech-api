@@ -1,0 +1,7 @@
+node_modules/
+bun.lockb
+yarn-error.log
+.env
+.env.production
+dist/
+uploads/
