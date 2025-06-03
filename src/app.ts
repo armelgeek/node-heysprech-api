@@ -57,8 +57,8 @@ export class App {
       cors({
         origin:
           Bun.env.NODE_ENV === 'production'
-            ? ['https://hf.tiakalo.org', 'http://localhost:3000']
-            : [Bun.env.BETTER_AUTH_URL || 'http://localhost:3000', Bun.env.REACT_APP_URL || 'http://localhost:3000'],
+            ? ['https://hf.tiakalo.org', 'https://hf.tiakalo.org']
+            : [Bun.env.BETTER_AUTH_URL || 'https://hf.tiakalo.org', Bun.env.REACT_APP_URL || 'https://hf.tiakalo.org'],
         credentials: true,
         maxAge: 86400
       })

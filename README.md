@@ -66,7 +66,7 @@ cp .env.example .env
 bun run dev
 ```
 
-Le serveur sera accessible sur http://localhost:3000
+Le serveur sera accessible sur https://hf.tiakalo.org
 ```
 
 ## Configuration de la base de données 🗄️
@@ -186,9 +186,9 @@ docs(readme): mettre à jour l'installation
 ## API Documentation 📚
 
 La documentation API est disponible sur :
-- Swagger UI : http://localhost:3000/docs
-- OpenAPI JSON : http://localhost:3000/swagger
-- Better Auth Swagger UI: http://localhost:3000/api/auth/reference
+- Swagger UI : https://hf.tiakalo.org/docs
+- OpenAPI JSON : https://hf.tiakalo.org/swagger
+- Better Auth Swagger UI: https://hf.tiakalo.org/api/auth/reference
 
 ## Tests 🧪
 
@@ -216,7 +216,7 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/default_db?search_pat
 
 # Better Auth
 BETTER_AUTH_SECRET=votre_secret_ici
-BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_URL=https://hf.tiakalo.org
 
 # Admin initial (optionnel)
 ADMIN_PASSWORD=votre_mot_de_passe_admin
