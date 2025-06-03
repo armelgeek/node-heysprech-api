@@ -82,7 +82,7 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/boiler_hono?search_pa
 
 3. Créez la base de données (si nécessaire) :
 ```sh
-psql -U postgres -c "drop database boiler_hono"
+psql -U postgres -c "create database boiler_hono"
 ```
 
 4. Exécutez les migrations :

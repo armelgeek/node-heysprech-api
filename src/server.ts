@@ -18,7 +18,7 @@ const displayBanner = (port: number | string) => {
 `)
 }
 
-const PORT = Bun.env.PORT || 3000
+const PORT = Bun.env.PORT || 5000
 
 function startServer() {
   try {

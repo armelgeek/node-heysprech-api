@@ -32,8 +32,8 @@ export const auth = betterAuth({
     provider: 'pg',
     usePlural: true
   }),
-  baseURL: env.BETTER_AUTH || 'http://localhost:3000',
-  trustedOrigins: [env.BETTER_AUTH || 'http://localhost:3000', env.REACT_APP_URL || 'http://localhost:5173'],
+  baseURL: env.BETTER_AUTH || 'http://localhost:5000',
+  trustedOrigins: [env.BETTER_AUTH || 'http://localhost:5000', env.REACT_APP_URL || 'http://localhost:3000'],
   user: {
     modelName: 'users',
     additionalFields: {

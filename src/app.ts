@@ -57,8 +57,8 @@ export class App {
       cors({
         origin:
           Bun.env.NODE_ENV === 'production'
-            ? ['https://dev-api.meko.ac', 'https://dev.meko.ac', 'https://dev-bo.meko.ac', 'http://localhost:5173']
-            : [Bun.env.BETTER_AUTH_URL || 'http://localhost:3000', Bun.env.REACT_APP_URL || 'http://localhost:5173'],
+            ? ['https://hf.tiakalo.org', 'http://localhost:3000']
+            : [Bun.env.BETTER_AUTH_URL || 'http://localhost:3000', Bun.env.REACT_APP_URL || 'http://localhost:3000'],
         credentials: true,
         maxAge: 86400
       })
@@ -66,15 +66,13 @@ export class App {
     this.app.use('*', responseMiddleware())
     this.app.use(addSession)
     this.app.use(sessionValidator)
-    //this.app.use(addStripe)
-    //this.app.use(checkTrialStatus)
   }
 
   private initializeSwaggerUI() {
     this.app.doc31('/swagger', () => {
       const protocol = 'https:'
-      const hostname = Bun.env.NODE_ENV === 'production' ? 'dev-api.meko.ac' : 'localhost'
-      const port = Bun.env.NODE_ENV === 'production' ? '' : ':3000'
+      const hostname = Bun.env.NODE_ENV === 'production' ? 'hf.tiakalo.org' : 'localhost'
+      const port = Bun.env.NODE_ENV === 'production' ? '' : ':5000'
 
       return {
         openapi: '3.1.0',
@@ -105,7 +103,7 @@ export class App {
           robots: 'index, follow',
           description: 'Boiler Hono API is ....'
         },
-        url: Bun.env.NODE_ENV === 'production' ? 'https://dev-api.meko.ac/swagger' : 'http://localhost:3000/swagger'
+        url: Bun.env.NODE_ENV === 'production' ? 'https://hf.tiakalo.org/swagger' : 'http://localhost:5000/swagger'
       })
     )
   }
