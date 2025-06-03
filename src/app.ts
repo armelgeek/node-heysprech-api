@@ -103,7 +103,7 @@ export class App {
           robots: 'index, follow',
           description: 'Boiler Hono API is ....'
         },
-        url: Bun.env.NODE_ENV === 'production' ? 'https://hf.tiakalo.org/swagger' : 'http://localhost:5000/swagger'
+        url: Bun.env.NODE_ENV === 'production' ? 'https://hf.tiakalo.org/swagger' : 'https://hf.tiakalo.org/swagger'
       })
     )
   }
