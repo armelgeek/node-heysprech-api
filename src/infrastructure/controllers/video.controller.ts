@@ -142,7 +142,7 @@ export class VideoController implements Routes {
             )
           }
 
-          const tempPath = `uploads/${Date.now()}-${file.name}`
+          const tempPath = `audios/${Date.now()}-${file.name}`
           await Bun.write(tempPath, file)
 
           const videoFile = {
