@@ -134,22 +134,16 @@ export class ProcessingQueue {
     const baseDir = path.join(homedir(), 'sprech-audios')
     return new Promise((resolve, reject) => {
 
+      // Get relative path from base directory to use in Docker
+      const relativePath = audioPath.replace('/root/sprech-audios/', '')
       const audioFileName = path.basename(audioPath)
       const dockerArgs = [
         'run',
         '--rm',
         '--volume',
-        `${baseDir}:/var/www/sprech-audios:rw`,
-        '--volume',
-        `${baseDir}/audios:/app/audios:ro`,
-        '--volume',
-        `${baseDir}/de:/app/de:rw`,
-        '--volume',
-        `${baseDir}/fr:/app/fr:rw`,
-        '--volume',
-        `${baseDir}/en:/app/en:rw`,
+        `${baseDir}:/app:rw`,
         'heysprech-api',
-        `/app/audios/${audioFileName}`,
+        `/app/${relativePath}`,
         '--source-lang',
         sourceLang,
         '--target-lang',
@@ -204,7 +198,7 @@ export class ProcessingQueue {
 
           if (code === 0) {
             // Le fichier de sortie sera dans le dossier correspondant à la langue cible
-            const outputDir = path.join(process.cwd(), targetLang)
+            const outputDir = path.join(baseDir, targetLang)
             const outputPath = path.join(outputDir, `${audioFileName}.json`)
 
             // Vérification que le fichier de sortie existe
