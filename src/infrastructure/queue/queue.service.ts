@@ -114,16 +114,17 @@ export class ProcessingQueue {
         throw new Error(`Audio file not found: ${audioPath}`)
       }
 
-      // Si le fichier est dans le dossier uploads, le déplacer vers audios
+      // Si le fichier est dans le dossier uploads, le déplacer vers sa destination finale
       if (audioPath.startsWith('uploads/')) {
         const fileName = path.basename(audioPath)
-        const newPath = path.join(homedir(), 'sprech-audios', 'audios', fileName)
+        const newPath = path.join(homedir(), 'sprech-audios', 'de', fileName)
         await fs.mkdir(path.dirname(newPath), { recursive: true })
         await fs.rename(audioPath, newPath)
         console.info(`Moved file from ${audioPath} to ${newPath}`)
         return
       }
 
+      // Vérification que le fichier est dans le dossier sprech-audios ou ses sous-dossiers
       const baseDir = path.join(homedir(), 'sprech-audios')
       const relativePath = path.relative(baseDir, audioPath)
 
@@ -146,14 +147,17 @@ export class ProcessingQueue {
     const { sourceLang = 'de', targetLang = 'fr' } = job.data
 
     let processPath = audioPath
+    const baseDir = path.join(homedir(), 'sprech-audios')
+
+    // If the file is from uploads, it will have already been moved to the appropriate directory
     if (audioPath.startsWith('uploads/')) {
       const fileName = path.basename(audioPath)
-      processPath = path.join(homedir(), 'sprech-audios', 'audios', fileName)
+      processPath = path.join(baseDir, 'de', fileName)
     }
 
     return new Promise((resolve, reject) => {
-      // Construction de la commande Docker
-      const audioFileName = path.basename(processPath)
+      // Get the relative path from the base directory to use in Docker
+      const relativePath = path.relative(baseDir, processPath)
       const baseDir = path.join(homedir(), 'sprech-audios')
       const dockerArgs = [
         'run',
@@ -161,7 +165,7 @@ export class ProcessingQueue {
         '--volume',
         `${baseDir}:/app:rw`,
         'heysprech-api',
-        `/app/audios/${audioFileName}`,
+        `/app/${relativePath}`,
         '--source-lang',
         sourceLang,
         '--target-lang',
