@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import { ProcessingQueue } from '@/infrastructure/queue/queue.service'
 import { VideoRepository } from '@/infrastructure/repositories/video.repository'
@@ -7,12 +6,9 @@ import type { VideoModel } from '@/domain/models/video.model'
 import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
 
 export class VideoService {
-  private baseDir: string
   videoRepository: VideoRepositoryInterface
   queue: ProcessingQueue
-
   constructor() {
-    this.baseDir = path.join(homedir(), 'sprech-audios')
     this.videoRepository = new VideoRepository()
     this.queue = new ProcessingQueue()
     this.createDirectories().catch((error) => {
@@ -21,24 +17,13 @@ export class VideoService {
   }
 
   async createDirectories() {
-    const baseDirs = ['temp', 'transcriptions', 'audios']
-    const langDirs = ['fr', 'en', 'de']
-    
-    try {
-      // Créer le dossier racine
-      await fs.mkdir(this.baseDir, { recursive: true })
-      
-      // Créer les dossiers de base
-      for (const dir of baseDirs) {
-        await fs.mkdir(path.join(this.baseDir, dir), { recursive: true })
+    const dirs = ['audios', 'transcriptions', 'temp']
+    for (const dir of dirs) {
+      try {
+        await fs.mkdir(dir, { recursive: true })
+      } catch (error) {
+        console.warn(`Dossier ${dir} existe déjà ou erreur:`, error)
       }
-
-      // Créer les dossiers de langue
-      for (const lang of langDirs) {
-        await fs.mkdir(path.join(this.baseDir, lang), { recursive: true })
-      }
-    } catch (error) {
-      console.warn(`Erreur lors de la création des dossiers:`, error)
     }
   }
 
@@ -54,21 +39,12 @@ export class VideoService {
       title?: string
     } = {}
   ): Promise<VideoModel> {
-    const language = options.language || 'de'
-    
-    // Assurons-nous que le fichier est dans le bon dossier
-    const newAudioPath = path.join(this.baseDir, language, `${Date.now()}-${file.originalname}`)
-    if (file.path !== newAudioPath) {
-      await fs.copyFile(file.path, newAudioPath)
-      await fs.unlink(file.path).catch(() => {}) // Supprime l'ancien fichier s'il existe
-    }
-
-    const tempInfoFile = path.join(this.baseDir, 'temp', `info_${Date.now()}.txt`)
+    const tempInfoFile = path.join('temp', `info_${Date.now()}.txt`)
     const videoInfo = {
       originalFilename: file.originalname,
-      filePath: newAudioPath,
+      filePath: file.path,
       fileSize: file.size,
-      language,
+      language: options.language || 'de',
       title: options.title || file.originalname,
       uploadedAt: new Date().toISOString()
     }
@@ -78,16 +54,16 @@ export class VideoService {
     const videoId = await this.videoRepository.insertVideo({
       title: options.title || file.originalname,
       originalFilename: file.originalname,
-      filePath: newAudioPath,
+      filePath: file.path,
       fileSize: file.size,
-      language,
+      language: options.language || 'de',
       tempInfoFile,
       transcriptionStatus: 'pending'
     })
 
     const job = await this.queue.addVideo({
       videoId,
-      audioPath: newAudioPath
+      audioPath: file.path
     })
 
     const video = await this.videoRepository.getVideoById(videoId)
