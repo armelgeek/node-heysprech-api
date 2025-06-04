@@ -242,8 +242,9 @@ export class ProcessingQueue {
 
           if (code === 0) {
             // Le fichier de sortie sera dans le dossier correspondant à la langue cible
-            const outputDir = path.join(baseDir, targetLang)
-            const outputPath = path.join(outputDir, `${audioFileName}.json`)
+            const outputDir = path.join(baseDir, sourceLang)
+             const nameWithoutExt = path.parse(audioFileName).name
+            const outputPath = path.join(outputDir, `${nameWithoutExt}.json`)
 
             // Vérification que le fichier de sortie existe
             try {

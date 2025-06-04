@@ -1,6 +1,7 @@
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { html } from 'hono/html'
+import fs from 'node:fs/promises'
 import { VideoService } from '@/application/services/video.service'
 import type { Routes } from '@/domain/types'
 import path from 'node:path'
@@ -144,7 +145,26 @@ export class VideoController implements Routes {
             )
           }
 
-          const tempPath = `${baseDir}/audios/${Date.now()}-${file.name}`
+          // Trouve un nom de fichier unique
+          const getUniqueFilePath = async (baseName: string) => {
+            let counter = 0
+            let filePath = path.join(baseDir, 'audios', baseName)
+            
+            while (true) {
+              try {
+                await fs.access(filePath)
+                counter++
+                const ext = path.extname(baseName)
+                const nameWithoutExt = path.basename(baseName, ext)
+                filePath = path.join(baseDir, 'audios', `${nameWithoutExt}-${counter}${ext}`)
+              } catch {
+                // Le fichier n'existe pas, on peut utiliser ce nom
+                return filePath
+              }
+            }
+          }
+
+          const tempPath = await getUniqueFilePath(file.name)
           await Bun.write(tempPath, file)
 
           const videoFile = {
