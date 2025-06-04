@@ -232,6 +232,23 @@ export class ProcessingQueue {
       dockerProcess.on('error', (error) => {
         reject(new Error(`Failed to start Docker sprech process: ${error.message}`))
       })
+
+      dockerProcess.on('close', (code) => {
+        if (code === 0) {
+          // Succès du traitement
+          resolve({
+            success: true,
+            stats: {
+              segments: 0, // Ces valeurs seront à extraire de la sortie si possible
+              vocabulary: 0
+            },
+            outputPath: path.join(baseDir, targetLang, `${path.basename(audioPath, path.extname(audioPath))}.json`)
+          })
+        } else {
+          // Échec du traitement
+          reject(new Error(`Docker process failed with code ${code}. Error: ${stderr}`))
+        }
+      })
     })
   }
 
