@@ -76,7 +76,7 @@ export class ProcessingQueue {
         await this.videoRepository.updateVideoStatus(videoId, 'processing')
 
         const result = await this.processAudioFile(job, videoId, validatedAudioPath)
-        
+
         if (result.success) {
           await this.handleSuccessfulProcessing(videoId, result)
         }
@@ -242,7 +242,12 @@ export class ProcessingQueue {
               segments: 0, // Ces valeurs seront à extraire de la sortie si possible
               vocabulary: 0
             },
-            outputPath: path.join(baseDir, sourceLang, `${path.basename(audioPath, path.extname(audioPath))}.json`)
+            outputPath: path.join(
+              baseDir,
+              sourceLang,
+              path.extname(audioPath),
+              `${path.basename(audioPath, path.extname(audioPath))}.json`
+            )
           })
         } else {
           // Échec du traitement
@@ -261,12 +266,9 @@ export class ProcessingQueue {
 
     // Charger les données de transcription dans la base de données
     await this.videoRepository.logProcessingStep(videoId, 'database_import', 'started')
-    
+
     try {
-      const transcriptionStats = await this.videoRepository.loadTranscriptionData(
-        videoId,
-        result.outputPath
-      )
+      const transcriptionStats = await this.videoRepository.loadTranscriptionData(videoId, result.outputPath)
 
       // Mettre à jour le statut avec le chemin du fichier
       await this.videoRepository.updateVideoStatus(videoId, 'completed', {
