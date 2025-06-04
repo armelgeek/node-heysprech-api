@@ -161,7 +161,7 @@ export class ProcessingQueue {
         '--volume',
         `${baseDir}:/app:rw`,
         'heysprech-api',
-        `${path.join('/app', path.relative(baseDir, processPath))}`,
+        `/app/audios/${audioFileName}`,
         '--source-lang',
         sourceLang,
         '--target-lang',
