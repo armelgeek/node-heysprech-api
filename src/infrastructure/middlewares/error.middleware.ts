@@ -7,7 +7,13 @@ export const errorHandler: ErrorHandler = (err, c) => {
 
   const statusCode = currentStatus !== 200 ? (currentStatus as StatusCode) : 500
   const env = c.env?.NODE_ENV
-
+  console.error('Error occurred:', {
+    message: err?.message,
+    stack: env ? null : err?.stack,
+    status: statusCode,
+    method: c.req.method,
+    url: c.req.url
+  })
   return c.json(
     {
       success: false,

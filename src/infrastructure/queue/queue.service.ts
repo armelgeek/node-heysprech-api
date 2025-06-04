@@ -232,61 +232,6 @@ export class ProcessingQueue {
       dockerProcess.on('error', (error) => {
         reject(new Error(`Failed to start Docker sprech process: ${error.message}`))
       })
-
-      dockerProcess.on('close', async (code: number, signal: string) => {
-        try {
-          if (signal) {
-            reject(new Error(`Docker sprech process was killed with signal ${signal}`))
-            return
-          }
-
-          if (code === 0) {
-            // Le fichier de sortie sera dans le dossier correspondant à la langue cible
-            const outputDir = path.join(baseDir, sourceLang)
-            const nameWithoutExt = path.parse(audioFileName).name
-            const outputPath = path.join(outputDir, `${nameWithoutExt}.json`)
-
-            // Vérification que le fichier de sortie existe
-            try {
-              await fs.access(outputPath)
-            } catch {
-              // Essayer aussi avec l'extension originale remplacée
-              const nameWithoutExt = path.parse(audioFileName).name
-              const alternativeOutputPath = path.join(outputDir, `${nameWithoutExt}.json`)
-              try {
-                await fs.access(alternativeOutputPath)
-                const stats = await this.videoRepository.loadTranscriptionData(videoId, alternativeOutputPath)
-                resolve({
-                  success: true,
-                  stats,
-                  outputPath: alternativeOutputPath
-                })
-                return
-              } catch {
-                reject(
-                  new Error(
-                    `Docker sprech completed but output file not found: ${outputPath} or ${alternativeOutputPath}`
-                  )
-                )
-                return
-              }
-            }
-
-            const stats = await this.videoRepository.loadTranscriptionData(videoId, outputPath)
-
-            resolve({
-              success: true,
-              stats,
-              outputPath
-            })
-          } else {
-            const errorMsg = `Docker sprech command failed (code ${code}): ${stderr}`
-            reject(new Error(errorMsg))
-          }
-        } catch (error: any) {
-          reject(error)
-        }
-      })
     })
   }
 
