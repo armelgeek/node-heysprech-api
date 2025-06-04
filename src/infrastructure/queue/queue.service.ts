@@ -114,22 +114,8 @@ export class ProcessingQueue {
         throw new Error(`Audio file not found: ${audioPath}`)
       }
 
-      // Si le fichier est dans le dossier uploads, le déplacer vers audios
-      if (audioPath.startsWith('uploads/')) {
-        const fileName = path.basename(audioPath)
-        const newPath = path.join(process.cwd(), 'audios', fileName)
-        await fs.rename(audioPath, newPath)
-        console.info(`Moved file from ${audioPath} to ${newPath}`)
-        return
-      }
+     
 
-      // Vérification que le fichier est dans le dossier audios
-      const audioDir = path.join(process.cwd(), 'audios')
-      const relativePath = path.relative(audioDir, audioPath)
-
-      if (relativePath.startsWith('..')) {
-        throw new Error(`Audio file must be in the audios directory: ${audioPath}`)
-      }
 
       // Vérification de l'extension
       const ext = path.extname(audioPath).toLowerCase()
@@ -147,7 +133,7 @@ export class ProcessingQueue {
 
     const baseDir = path.join(homedir(), 'sprech-audios')
     return new Promise((resolve, reject) => {
-      
+
       const audioFileName = path.basename(audioPath)
       const dockerArgs = [
         'run',
