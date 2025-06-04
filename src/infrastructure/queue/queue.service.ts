@@ -145,37 +145,41 @@ export class ProcessingQueue {
     }
   }
 
-  private async processAudioFile(job: Job<QueueJobData>, videoId: number, audioPath: string): Promise<ProcessingResult> {
+  private async processAudioFile(
+    job: Job<QueueJobData>,
+    videoId: number,
+    audioPath: string
+  ): Promise<ProcessingResult> {
     const { sourceLang = 'de', targetLang = 'fr' } = job.data
     const baseDir = path.join(homedir(), 'sprech-audios')
 
     try {
-      // Get normalized path from validateAudioFile
       const processPath = await this.validateAudioFile(audioPath)
-      
+      const relativePath = path.relative(baseDir, processPath)
+
       return new Promise((resolve, reject) => {
         // Construction de la commande Docker
         const dockerArgs = [
           'run',
           '--rm',
-          '--workdir=/app',
+          '--workdir=/var/www/sprech-audios',
           '--volume',
-          `${baseDir}:/app:rw`,
+          `${baseDir}:/var/www/sprech-audios:rw`,
           'heysprech-api',
-          'cli.py',
+          'python',
+          '/app/cli.py',
+          `${relativePath}`,
           '--source-lang',
           sourceLang,
           '--target-lang',
-          targetLang,
-          '--input',
-          processPath
+          targetLang
         ]
 
         console.info(`Starting Docker sprech process for video ${videoId}:`, {
           audioFile: path.basename(processPath),
           sourceLang,
           targetLang,
-          containerPath: `/app/${path.relative(baseDir, processPath)}`
+          containerPath: `/var/www/sprech-audios/${relativePath}`
         })
 
         const dockerProcess = spawn('docker', dockerArgs, {
@@ -189,7 +193,6 @@ export class ProcessingQueue {
           const output = data.toString()
           console.info(`Docker output: ${output.trim()}`)
 
-          // Mise à jour du progrès basée sur la sortie
           if (output.includes('Processing') && !progressReported) {
             job.progress(25)
           } else if (output.includes('Transcribing') && job.progress() < 50) {
@@ -265,7 +268,7 @@ export class ProcessingQueue {
           }
         })
       })
-    } catch (error:any) {
+    } catch (error: any) {
       throw new Error(`Error in processAudioFile: ${error.message}`)
     }
   }
