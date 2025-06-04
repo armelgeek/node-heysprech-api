@@ -255,19 +255,43 @@ export class ProcessingQueue {
   private async handleSuccessfulProcessing(videoId: number, result: ProcessingResult): Promise<void> {
     await this.videoRepository.logProcessingStep(videoId, 'transcription', 'completed')
 
-    await this.videoRepository.updateVideoStatus(videoId, 'completed', {
-      transcriptionFile: result.outputPath
-    })
+    if (!result.outputPath) {
+      throw new Error('No output path provided in processing result')
+    }
 
-    // Nettoyage amélioré des fichiers temporaires
-    await this.cleanupTempFiles(videoId)
+    // Charger les données de transcription dans la base de données
+    await this.videoRepository.logProcessingStep(videoId, 'database_import', 'started')
+    
+    try {
+      const transcriptionStats = await this.videoRepository.loadTranscriptionData(
+        videoId,
+        result.outputPath
+      )
 
-    await this.videoRepository.logProcessingStep(
-      videoId,
-      'database_import',
-      'completed',
-      `Segments: ${result.stats?.segments}, Vocabulary: ${result.stats?.vocabulary}`
-    )
+      // Mettre à jour le statut avec le chemin du fichier
+      await this.videoRepository.updateVideoStatus(videoId, 'completed', {
+        transcriptionFile: result.outputPath
+      })
+
+      // Nettoyage des fichiers temporaires
+      await this.cleanupTempFiles(videoId)
+
+      // Log du succès avec les statistiques détaillées
+      await this.videoRepository.logProcessingStep(
+        videoId,
+        'database_import',
+        'completed',
+        `Segments: ${transcriptionStats.segments}, Vocabulary: ${transcriptionStats.vocabulary}, Language: ${transcriptionStats.language}`
+      )
+    } catch (error: any) {
+      await this.videoRepository.logProcessingStep(
+        videoId,
+        'database_import',
+        'failed',
+        `Failed to import transcription data: ${error.message}`
+      )
+      throw error
+    }
   }
 
   private async cleanupTempFiles(videoId: number): Promise<void> {
