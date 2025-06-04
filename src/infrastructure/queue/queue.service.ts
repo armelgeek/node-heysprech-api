@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import os from 'node:os'
 import Queue, { type Job } from 'bull'
 import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
 import { VideoRepository } from '../repositories/video.repository'
@@ -172,13 +172,9 @@ export class ProcessingQueue {
         'run',
         '--rm',
         '--volume',
-        `${audiosDir}:/app/audios:ro`,
+        'heysprech-audios:/app/audios:ro',
         '--volume',
-        `${deDir}:/app/de:rw`,
-        '--volume',
-        `${frDir}:/app/fr:rw`,
-        '--volume',
-        `${enDir}:/app/en:rw`,
+        'heysprech-de:/app/de:rw',
         'heysprech-api',
         `/app/audios/${audioFileName}`,
         '--source-lang',
