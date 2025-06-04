@@ -3,7 +3,9 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { html } from 'hono/html'
 import { VideoService } from '@/application/services/video.service'
 import type { Routes } from '@/domain/types'
-
+import path from 'node:path'
+import os from 'node:os';
+const baseDir = path.join(os.homedir(), 'heysprech-data')
 const uploadRequestSchema = z.object({
   language: z.string().default('de').openapi({
     description: 'The language of the audio file',
@@ -54,9 +56,9 @@ export class VideoController implements Routes {
   }
 
   public initRoutes() {
-    this.controller.use('/public/*', serveStatic({ root: './' }))
-    this.controller.use('/audios/*', serveStatic({ root: './' }))
-    this.controller.use('/transcriptions/*', serveStatic({ root: './' }))
+    this.controller.use('/public/*', serveStatic({ root: baseDir }))
+    this.controller.use('/audios/*', serveStatic({ root: baseDir }))
+    this.controller.use('/transcriptions/*', serveStatic({ root: baseDir }))
 
     this.controller.get('/', (c) => {
       return c.html(this.renderHomePage())
@@ -142,7 +144,7 @@ export class VideoController implements Routes {
             )
           }
 
-          const tempPath = `audios/${Date.now()}-${file.name}`
+          const tempPath = `${baseDir}/audios/${Date.now()}-${file.name}`
           await Bun.write(tempPath, file)
 
           const videoFile = {
