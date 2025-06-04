@@ -242,7 +242,7 @@ export class ProcessingQueue {
               segments: 0, // Ces valeurs seront à extraire de la sortie si possible
               vocabulary: 0
             },
-            outputPath: path.join(baseDir, targetLang, `${path.basename(audioPath, path.extname(audioPath))}.json`)
+            outputPath: path.join(baseDir, sourceLang, `${path.basename(audioPath, path.extname(audioPath))}.json`)
           })
         } else {
           // Échec du traitement
