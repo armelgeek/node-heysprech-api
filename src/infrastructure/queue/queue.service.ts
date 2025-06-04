@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import Queue, { type Job } from 'bull'
 import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
 import { VideoRepository } from '../repositories/video.repository'
-import { homedir } from 'node:os'
 
 interface QueueJobData {
   videoId: number
@@ -114,8 +114,24 @@ export class ProcessingQueue {
         throw new Error(`Audio file not found: ${audioPath}`)
       }
 
-     
+      // Si le fichier est dans le dossier uploads, le déplacer vers audios
+      if (audioPath.startsWith('uploads/')) {
+        const fileName = path.basename(audioPath)
+        const newPath = path.join(homedir(), 'sprech-audios', 'audios', fileName)
+        await fs.mkdir(path.dirname(newPath), { recursive: true })
+        await fs.rename(audioPath, newPath)
+        console.info(`Moved file from ${audioPath} to ${newPath}`)
+        return
+      }
 
+      // Vérification que le fichier est dans le dossier sprech-audios
+      const baseDir = path.join(homedir(), 'sprech-audios')
+      const audioDir = path.join(baseDir, 'audios')
+      const relativePath = path.relative(audioDir, audioPath)
+
+      if (relativePath.startsWith('..')) {
+        throw new Error(`Audio file must be in ${audioDir}: ${audioPath}`)
+      }
 
       // Vérification de l'extension
       const ext = path.extname(audioPath).toLowerCase()
@@ -131,19 +147,31 @@ export class ProcessingQueue {
   private processAudioFile(job: Job<QueueJobData>, videoId: number, audioPath: string): Promise<ProcessingResult> {
     const { sourceLang = 'de', targetLang = 'fr' } = job.data
 
-    const baseDir = path.join(homedir(), 'sprech-audios')
-    return new Promise((resolve, reject) => {
+    let processPath = audioPath
+    if (audioPath.startsWith('uploads/')) {
+      const fileName = path.basename(audioPath)
+      processPath = path.join(homedir(), 'sprech-audios', 'audios', fileName)
+    }
 
-      // Get relative path from base directory to use in Docker
-      const relativePath = audioPath.replace('/root/sprech-audios/', '')
-      const audioFileName = path.basename(audioPath)
+    return new Promise((resolve, reject) => {
+      // Construction de la commande Docker
+      const audioFileName = path.basename(processPath)
+      const baseDir = path.join(homedir(), 'sprech-audios')
       const dockerArgs = [
         'run',
         '--rm',
         '--volume',
-        `${baseDir}:/app:rw`,
+        `${baseDir}:/var/www/sprech-audios:rw`,
+        '--volume',
+        `${baseDir}/audios:/app/audios:ro`,
+        '--volume',
+        `${baseDir}/de:/app/de:rw`,
+        '--volume',
+        `${baseDir}/fr:/app/fr:rw`,
+        '--volume',
+        `${baseDir}/en:/app/en:rw`,
         'heysprech-api',
-        `/app/${relativePath}`,
+        `/app/audios/${audioFileName}`,
         '--source-lang',
         sourceLang,
         '--target-lang',
@@ -157,7 +185,6 @@ export class ProcessingQueue {
       })
 
       const dockerProcess = spawn('docker', dockerArgs, {
-        timeout: 600000, // 10 minutes timeout pour Docker
         stdio: ['ignore', 'pipe', 'pipe']
       })
 
@@ -198,6 +225,7 @@ export class ProcessingQueue {
 
           if (code === 0) {
             // Le fichier de sortie sera dans le dossier correspondant à la langue cible
+            const baseDir = path.join(homedir(), 'sprech-audios')
             const outputDir = path.join(baseDir, targetLang)
             const outputPath = path.join(outputDir, `${audioFileName}.json`)
 
@@ -355,15 +383,21 @@ export class ProcessingQueue {
 
   private async ensureOutputDirectories(): Promise<void> {
     const dirs = ['audios', 'de', 'fr', 'en']
+    const baseDir = path.join(homedir(), 'sprech-audios')
 
-    for (const dir of dirs) {
-      const dirPath = path.join(process.cwd(), dir)
-      try {
-        await fs.access(dirPath)
-      } catch {
-        await fs.mkdir(dirPath, { recursive: true })
-        console.info(`Created directory: ${dirPath}`)
+    try {
+      await fs.mkdir(baseDir, { recursive: true })
+      for (const dir of dirs) {
+        const dirPath = path.join(baseDir, dir)
+        try {
+          await fs.access(dirPath)
+        } catch {
+          await fs.mkdir(dirPath, { recursive: true })
+          console.info(`Created directory: ${dirPath}`)
+        }
       }
+    } catch (error) {
+      console.error('Error creating directories:', error)
     }
   }
 
@@ -450,7 +484,7 @@ export class ProcessingQueue {
     targetLang: string = 'fr',
     options?: { priority?: number; delay?: number }
   ): Promise<Job<QueueJobData>> {
-    const audioPath = path.join(process.cwd(), 'audios', audioFileName)
+    const audioPath = path.join(homedir(), 'sprech-audios', 'audios', audioFileName)
 
     return this.addVideo(
       {
