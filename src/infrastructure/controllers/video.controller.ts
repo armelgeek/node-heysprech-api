@@ -1,12 +1,52 @@
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { html } from 'hono/html'
-import fs from 'node:fs/promises'
 import { VideoService } from '@/application/services/video.service'
 import type { Routes } from '@/domain/types'
-import path from 'node:path'
-import os from 'node:os';
+
 const baseDir = path.join(os.homedir(), 'heysprech-data')
+
+const errorResponseSchema = z
+  .object({
+    success: z.boolean(),
+    error: z.string()
+  })
+  .openapi('ErrorResponse')
+
+const successResponseSchema = z
+  .object({
+    success: z.boolean(),
+    message: z.string()
+  })
+  .openapi('SuccessResponse')
+
+const videoSchema = z
+  .object({
+    id: z.number(),
+    title: z.string(),
+    originalFilename: z.string(),
+    fileSize: z.number(),
+    language: z.string(),
+    transcriptionStatus: z.enum(['pending', 'processing', 'completed', 'failed']),
+    errorMessage: z.string().optional(),
+    createdAt: z.string(),
+    processedAt: z.string().optional()
+  })
+  .openapi('Video')
+
+const queueStatusSchema = z
+  .object({
+    waiting: z.number(),
+    active: z.number(),
+    completed: z.number(),
+    failed: z.number()
+  })
+  .openapi('QueueStatus')
+
+// Request Schemas
 const uploadRequestSchema = z.object({
   language: z.string().default('de').openapi({
     description: 'The language of the audio file',
@@ -149,7 +189,7 @@ export class VideoController implements Routes {
           const getUniqueFilePath = async (baseName: string) => {
             let counter = 0
             let filePath = path.join(baseDir, 'audios', baseName)
-            
+
             while (true) {
               try {
                 await fs.access(filePath)
@@ -199,96 +239,267 @@ export class VideoController implements Routes {
       }
     )
 
-    this.controller.get('/queue/status', async (c) => {
-      try {
-        const stats = await this.videoService.getQueueStatus()
-        return c.json(stats)
-      } catch (error: any) {
-        return c.json({ error: error.message }, 500)
-      }
-    })
-
-    this.controller.post('/queue/clean', async (c) => {
-      try {
-        await this.videoService.cleanQueue()
-        return c.json({
-          success: true,
-          message: 'Queue cleaned'
-        })
-      } catch (error: any) {
-        return c.json({ error: error.message }, 500)
-      }
-    })
-
-    this.controller.get('/videos/:id', async (c) => {
-      const id = Number.parseInt(c.req.param('id'))
-      try {
-        const video = await this.videoService.getVideoById(id)
-        if (!video) {
-          return c.json({ error: 'Video not found' }, 404)
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/queue/status',
+        tags: ['Queue'],
+        summary: 'Get Queue Status',
+        description: 'Retrieve current status of the processing queue',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: queueStatusSchema
+              }
+            },
+            description: 'Current queue statistics'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
         }
-        return c.json(video)
-      } catch (error: any) {
-        return c.json({ error: error.message }, 500)
+      }),
+      async (c:any) => {
+        try {
+          const stats = await this.videoService.getQueueStatus()
+          return c.json(stats)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
       }
-    })
+    )
 
-    this.controller.get('/videos/status', async (c) => {
-      try {
-        const videos = await this.videoService.getRecentVideos(20)
-        return c.json(videos)
-      } catch (error: any) {
-        return c.json({ error: error.message }, 500)
+    this.controller.openapi(
+      createRoute({
+        method: 'post',
+        path: '/queue/clean',
+        tags: ['Queue'],
+        summary: 'Clean Queue',
+        description: 'Remove completed and failed jobs from the queue',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'Queue cleaned successfully'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c:any) => {
+        try {
+          await this.videoService.cleanQueue()
+          return c.json({
+            success: true,
+            message: 'Queue cleaned successfully'
+          })
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
       }
-    })
+    )
 
-    this.controller.delete('/videos/:id', async (c) => {
-      const id = Number.parseInt(c.req.param('id'))
-      try {
-        await this.videoService.deleteVideo(id)
-        return c.json({
-          success: true,
-          message: 'Video and associated files deleted'
-        })
-      } catch (error: any) {
-        return c.json({ error: error.message }, 500)
-      }
-    })
 
-    this.controller.post('/videos/:id/retry', async (c) => {
-      const id = Number.parseInt(c.req.param('id'))
-      try {
-        await this.videoService.retryProcessing(id)
-        return c.json({
-          success: true,
-          message: 'Processing restarted'
-        })
-      } catch (error: any) {
-        return c.json({ error: error.message }, 500)
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/videos/recent',
+        tags: ['Videos'],
+        summary: 'Get Recent Videos',
+        description: 'Retrieve a list of recently processed videos',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: z.array(videoSchema)
+              }
+            },
+            description: 'List of recent videos'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c:any) => {
+        try {
+          const videos = await this.videoService.getRecentVideos(20)
+          return c.json(videos)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
       }
-    })
+    )
 
-    this.controller.get('/api/videos/recent', async (c) => {
-      try {
-        const videos = await this.videoService.getRecentVideos(10)
-        return c.json(
-          videos.map((v) => ({
-            id: v.id,
-            title: v.title,
-            originalFilename: v.originalFilename,
-            fileSize: v.fileSize,
-            language: v.language,
-            transcriptionStatus: v.transcriptionStatus,
-            errorMessage: v.errorMessage,
-            createdAt: v.createdAt,
-            processedAt: v.processedAt
-          }))
-        )
-      } catch (error: any) {
-        console.error('Error fetching recent videos:', error.message)
-        return c.json({ error: error.message }, 500)
+    this.controller.openapi(
+      createRoute({
+        method: 'delete',
+        path: '/videos/{id}',
+        tags: ['Videos'],
+        summary: 'Delete Video',
+        description: 'Delete a video and its associated files',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'The ID of the video to delete'
+          }
+        ],
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'Video deleted successfully'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c:any) => {
+        const id = Number.parseInt(c.req.param('id'))
+        if (Number.isNaN(id)) {
+          return c.json({ success: false, error: 'Invalid video ID' }, 400)
+        }
+        try {
+          await this.videoService.deleteVideo(id)
+          return c.json({
+            success: true,
+            message: 'Video and associated files deleted'
+          })
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
       }
-    })
+    )
+
+    this.controller.openapi(
+      createRoute({
+        method: 'post',
+        path: '/videos/{id}/retry',
+        tags: ['Videos'],
+        summary: 'Retry Video Processing',
+        description: 'Retry processing a failed video',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'The ID of the video to retry'
+          }
+        ],
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'Processing restarted successfully'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c:any) => {
+        const id = Number.parseInt(c.req.param('id'))
+        if (Number.isNaN(id)) {
+          return c.json({ success: false, error: 'Invalid video ID' }, 400)
+        }
+        try {
+          await this.videoService.retryProcessing(id)
+          return c.json({
+            success: true,
+            message: 'Processing restarted'
+          })
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
+      }
+    )
+
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/api/videos/recent',
+        tags: ['Videos'],
+        summary: 'Get Recent Videos API',
+        description: 'Retrieve a list of the 10 most recently processed videos',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: z.array(videoSchema)
+              }
+            },
+            description: 'List of recent videos'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c:any) => {
+        try {
+          const videos = await this.videoService.getRecentVideos(10)
+          return c.json(
+            videos.map((v) => ({
+              id: v.id,
+              title: v.title,
+              originalFilename: v.originalFilename,
+              language: v.language,
+              transcriptionStatus: v.transcriptionStatus,
+              errorMessage: v.errorMessage,
+              createdAt: v.createdAt,
+              processedAt: v.processedAt
+            }))
+          )
+        } catch (error: any) {
+          console.error('Error fetching recent videos:', error.message)
+          return c.json({ success: false, error: error.message }, 500)
+        }
+      }
+    )
   }
 
   private renderHomePage() {

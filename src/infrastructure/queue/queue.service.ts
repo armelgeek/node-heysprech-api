@@ -243,7 +243,7 @@ export class ProcessingQueue {
           if (code === 0) {
             // Le fichier de sortie sera dans le dossier correspondant à la langue cible
             const outputDir = path.join(baseDir, sourceLang)
-             const nameWithoutExt = path.parse(audioFileName).name
+            const nameWithoutExt = path.parse(audioFileName).name
             const outputPath = path.join(outputDir, `${nameWithoutExt}.json`)
 
             // Vérification que le fichier de sortie existe
@@ -422,7 +422,7 @@ export class ProcessingQueue {
         } catch (createError) {
           throw new Error(
             `Failed to create or access directory ${dirPath}: ${createError}. ` +
-            `This might be due to insufficient permissions or read-only filesystem.`
+              `This might be due to insufficient permissions or read-only filesystem.`
           )
         }
       }
