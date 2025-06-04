@@ -21,12 +21,21 @@ export class VideoService {
   }
 
   async createDirectories() {
-    const dirs = ['temp', 'transcriptions', 'audios']
+    const baseDirs = ['temp', 'transcriptions', 'audios']
+    const langDirs = ['fr', 'en', 'de']
+    
     try {
+      // Créer le dossier racine
       await fs.mkdir(this.baseDir, { recursive: true })
-      for (const dir of dirs) {
-        const fullPath = path.join(this.baseDir, dir)
-        await fs.mkdir(fullPath, { recursive: true })
+      
+      // Créer les dossiers de base
+      for (const dir of baseDirs) {
+        await fs.mkdir(path.join(this.baseDir, dir), { recursive: true })
+      }
+
+      // Créer les dossiers de langue
+      for (const lang of langDirs) {
+        await fs.mkdir(path.join(this.baseDir, lang), { recursive: true })
       }
     } catch (error) {
       console.warn(`Erreur lors de la création des dossiers:`, error)
@@ -45,12 +54,21 @@ export class VideoService {
       title?: string
     } = {}
   ): Promise<VideoModel> {
+    const language = options.language || 'de'
+    
+    // Assurons-nous que le fichier est dans le bon dossier
+    const newAudioPath = path.join(this.baseDir, language, `${Date.now()}-${file.originalname}`)
+    if (file.path !== newAudioPath) {
+      await fs.copyFile(file.path, newAudioPath)
+      await fs.unlink(file.path).catch(() => {}) // Supprime l'ancien fichier s'il existe
+    }
+
     const tempInfoFile = path.join(this.baseDir, 'temp', `info_${Date.now()}.txt`)
     const videoInfo = {
       originalFilename: file.originalname,
-      filePath: file.path,
+      filePath: newAudioPath,
       fileSize: file.size,
-      language: options.language || 'de',
+      language,
       title: options.title || file.originalname,
       uploadedAt: new Date().toISOString()
     }
@@ -60,16 +78,16 @@ export class VideoService {
     const videoId = await this.videoRepository.insertVideo({
       title: options.title || file.originalname,
       originalFilename: file.originalname,
-      filePath: file.path,
+      filePath: newAudioPath,
       fileSize: file.size,
-      language: options.language || 'de',
+      language,
       tempInfoFile,
       transcriptionStatus: 'pending'
     })
 
     const job = await this.queue.addVideo({
       videoId,
-      audioPath: file.path
+      audioPath: newAudioPath
     })
 
     const video = await this.videoRepository.getVideoById(videoId)
