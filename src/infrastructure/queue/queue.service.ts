@@ -115,7 +115,7 @@ export class ProcessingQueue {
   private async validateAudioFile(audioPath: string): Promise<string> {
     try {
       // Convert to absolute path for consistent handling
-      const absolutePath = path.isAbsolute(audioPath) ? audioPath : path.join(process.cwd(), audioPath)
+      const absolutePath = path.isAbsolute(audioPath) ? audioPath : path.join(baseDir, audioPath)
 
       const stats = await fs.stat(absolutePath)
       if (!stats.isFile()) {
@@ -125,14 +125,14 @@ export class ProcessingQueue {
       // If the file is in the uploads folder, move it to audios
       if (audioPath.startsWith('uploads/')) {
         const fileName = path.basename(audioPath)
-        const newPath = path.join(process.cwd(), 'audios', fileName)
+        const newPath = path.join(baseDir, 'audios', fileName)
         await fs.rename(absolutePath, newPath)
         console.info(`Moved file from ${audioPath} to ${newPath}`)
         return newPath
       }
 
       // Check if the file is in the audios directory
-      const audioDir = path.join(process.cwd(), 'audios')
+      const audioDir = path.join(baseDir, 'audios')
       const resolvedAudioDir = path.resolve(audioDir)
       const resolvedFilePath = path.resolve(absolutePath)
 
@@ -163,7 +163,7 @@ export class ProcessingQueue {
       const audioFileName = path.basename(audioPath)
 
       // Get absolute paths to ensure they exist
-      const currentDir = process.cwd()
+      const currentDir = baseDir
       const audiosDir = path.join(currentDir, 'audios')
       const deDir = path.join(currentDir, 'de')
       const frDir = path.join(currentDir, 'fr')
@@ -242,7 +242,7 @@ export class ProcessingQueue {
 
           if (code === 0) {
             // Le fichier de sortie sera dans le dossier correspondant à la langue cible
-            const outputDir = path.join(process.cwd(), targetLang)
+            const outputDir = path.join(baseDir, targetLang)
             const outputPath = path.join(outputDir, `${audioFileName}.json`)
 
             // Vérification que le fichier de sortie existe
