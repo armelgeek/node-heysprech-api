@@ -40,6 +40,8 @@ export class ProcessingQueue {
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
         port: Number.parseInt(process.env.REDIS_PORT || '6379'),
+        // Ajout de la gestion des erreurs Redis
+        retryDelayOnFailover: 100,
         enableReadyCheck: false,
         maxRetriesPerRequest: 3
       },
@@ -107,165 +109,167 @@ export class ProcessingQueue {
     }
   }
 
-  private async validateAudioFile(audioPath: string): Promise<void> {
+  private async validateAudioFile(audioPath: string): Promise<string> {
     try {
-      const stats = await fs.stat(audioPath)
+      // Convert /root/sprech-audios paths to correct home directory path
+      let normalizedPath = audioPath
+      if (audioPath.startsWith('/root/sprech-audios/')) {
+        normalizedPath = path.join(homedir(), 'sprech-audios', audioPath.slice('/root/sprech-audios/'.length))
+      }
+
+      const stats = await fs.stat(normalizedPath)
       if (!stats.isFile()) {
-        throw new Error(`Audio file not found: ${audioPath}`)
+        throw new Error(`Audio file not found: ${normalizedPath}`)
       }
 
       // Si le fichier est dans le dossier uploads, le déplacer vers sa destination finale
-      if (audioPath.startsWith('uploads/')) {
-        const fileName = path.basename(audioPath)
+      if (normalizedPath.startsWith('uploads/')) {
+        const fileName = path.basename(normalizedPath)
         const newPath = path.join(homedir(), 'sprech-audios', 'de', fileName)
         await fs.mkdir(path.dirname(newPath), { recursive: true })
-        await fs.rename(audioPath, newPath)
-        console.info(`Moved file from ${audioPath} to ${newPath}`)
-        return
-      }
-
-      // Vérification que le fichier est dans le dossier sprech-audios ou ses sous-dossiers
-      const baseDir = path.join(homedir(), 'sprech-audios')
-      const relativePath = path.relative(baseDir, audioPath)
-
-      if (relativePath.startsWith('..')) {
-        throw new Error(`Audio file must be in ${baseDir} or its subdirectories: ${audioPath}`)
+        await fs.rename(normalizedPath, newPath)
+        console.info(`Moved file from ${normalizedPath} to ${newPath}`)
+        return newPath
       }
 
       // Vérification de l'extension
-      const ext = path.extname(audioPath).toLowerCase()
+      const ext = path.extname(normalizedPath).toLowerCase()
       const supportedFormats = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
       if (!supportedFormats.includes(ext)) {
         console.warn(`Warning: Format ${ext} may not be supported. Supported: ${supportedFormats.join(', ')}`)
       }
+
+      return normalizedPath
     } catch (error) {
       throw new Error(`Cannot access audio file ${audioPath}: ${error}`)
     }
   }
 
-  private processAudioFile(job: Job<QueueJobData>, videoId: number, audioPath: string): Promise<ProcessingResult> {
+  private async processAudioFile(job: Job<QueueJobData>, videoId: number, audioPath: string): Promise<ProcessingResult> {
     const { sourceLang = 'de', targetLang = 'fr' } = job.data
     const baseDir = path.join(homedir(), 'sprech-audios')
-    let processPath = audioPath
 
-    // If the file is from uploads, it will have already been moved
-    if (audioPath.startsWith('uploads/')) {
-      const fileName = path.basename(audioPath)
-      processPath = path.join(baseDir, 'de', fileName)
-    }
+    try {
+      // Get normalized path from validateAudioFile
+      const processPath = await this.validateAudioFile(audioPath)
+      
+      return new Promise((resolve, reject) => {
+        // Construction de la commande Docker
+        const dockerArgs = [
+          'run',
+          '--rm',
+          '--workdir=/app',
+          '--volume',
+          `${baseDir}:/app:rw`,
+          'heysprech-api',
+          'cli.py',
+          '--source-lang',
+          sourceLang,
+          '--target-lang',
+          targetLang,
+          '--input',
+          processPath
+        ]
 
-    return new Promise((resolve, reject) => {
-      // Get the relative path and filename for Docker
-      const relativePath = path.relative(baseDir, processPath)
-      const audioFileName = path.basename(processPath)
+        console.info(`Starting Docker sprech process for video ${videoId}:`, {
+          audioFile: path.basename(processPath),
+          sourceLang,
+          targetLang,
+          containerPath: `/app/${path.relative(baseDir, processPath)}`
+        })
 
-      // Build Docker command with simpler volume mapping
-      const dockerArgs = [
-        'run',
-        '--rm',
-        '--volume',
-        `${baseDir}:/app:rw`,
-        'heysprech-api',
-        `/app/${relativePath}`,
-        '--source-lang',
-        sourceLang,
-        '--target-lang',
-        targetLang
-      ]
+        const dockerProcess = spawn('docker', dockerArgs, {
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
 
-      console.info(`Starting Docker sprech process for video ${videoId}:`, {
-        audioFile: audioFileName,
-        sourceLang,
-        targetLang
-      })
+        let stderr = ''
+        let progressReported = false
 
-      const dockerProcess = spawn('docker', dockerArgs, {
-        stdio: ['ignore', 'pipe', 'pipe']
-      })
+        dockerProcess.stdout.on('data', (data) => {
+          const output = data.toString()
+          console.info(`Docker output: ${output.trim()}`)
 
-      let stderr = ''
-      let progressReported = false
-
-      dockerProcess.stdout.on('data', (data) => {
-        const output = data.toString()
-        console.info(`Docker output: ${output.trim()}`)
-
-        // Mise à jour du progrès basée sur la sortie
-        if (output.includes('Processing') && !progressReported) {
-          job.progress(25)
-        } else if (output.includes('Transcribing') && job.progress() < 50) {
-          job.progress(50)
-          progressReported = true
-        } else if (output.includes('Translating') && job.progress() < 75) {
-          job.progress(75)
-        }
-      })
-
-      dockerProcess.stderr.on('data', (data) => {
-        const error = data.toString()
-        stderr += error
-        console.error(`Docker error: ${error.trim()}`)
-      })
-
-      dockerProcess.on('error', (error) => {
-        reject(new Error(`Failed to start Docker sprech process: ${error.message}`))
-      })
-
-      dockerProcess.on('close', async (code: number, signal: string) => {
-        try {
-          if (signal) {
-            reject(new Error(`Docker sprech process was killed with signal ${signal}`))
-            return
+          // Mise à jour du progrès basée sur la sortie
+          if (output.includes('Processing') && !progressReported) {
+            job.progress(25)
+          } else if (output.includes('Transcribing') && job.progress() < 50) {
+            job.progress(50)
+            progressReported = true
+          } else if (output.includes('Translating') && job.progress() < 75) {
+            job.progress(75)
           }
+        })
 
-          if (code === 0) {
-            // Le fichier de sortie sera dans le dossier correspondant à la langue cible
-            const baseDir = path.join(homedir(), 'sprech-audios')
-            const outputDir = path.join(baseDir, targetLang)
-            const outputPath = path.join(outputDir, `${audioFileName}.json`)
+        dockerProcess.stderr.on('data', (data) => {
+          const error = data.toString()
+          stderr += error
+          console.error(`Docker error: ${error.trim()}`)
+        })
 
-            // Vérification que le fichier de sortie existe
-            try {
-              await fs.access(outputPath)
-            } catch {
-              // Essayer aussi avec l'extension originale remplacée
-              const nameWithoutExt = path.parse(audioFileName).name
-              const alternativeOutputPath = path.join(outputDir, `${nameWithoutExt}.json`)
-              try {
-                await fs.access(alternativeOutputPath)
-                const stats = await this.videoRepository.loadTranscriptionData(videoId, alternativeOutputPath)
-                resolve({
-                  success: true,
-                  stats,
-                  outputPath: alternativeOutputPath
-                })
-                return
-              } catch {
-                reject(
-                  new Error(
-                    `Docker sprech completed but output file not found: ${outputPath} or ${alternativeOutputPath}`
-                  )
-                )
-                return
-              }
+        dockerProcess.on('error', (error) => {
+          reject(new Error(`Failed to start Docker sprech process: ${error.message}`))
+        })
+
+        dockerProcess.on('close', async (code: number, signal: string) => {
+          try {
+            if (signal) {
+              reject(new Error(`Docker sprech process was killed with signal ${signal}`))
+              return
             }
 
-            const stats = await this.videoRepository.loadTranscriptionData(videoId, outputPath)
+            if (code === 0) {
+              // Le fichier de sortie sera dans le dossier correspondant à la langue cible
+              const baseDir = path.join(homedir(), 'sprech-audios')
+              const outputDir = path.join(baseDir, targetLang)
+              const outputPath = path.join(outputDir, `${path.basename(processPath)}.json`)
 
-            resolve({
-              success: true,
-              stats,
-              outputPath
-            })
-          } else {
-            const errorMsg = `Docker sprech command failed (code ${code}): ${stderr}`
-            reject(new Error(errorMsg))
+              // Vérification que le fichier de sortie existe
+              try {
+                await fs.access(outputPath)
+              } catch {
+                // Essayer aussi avec l'extension originale remplacée
+                const nameWithoutExt = path.parse(path.basename(processPath)).name
+                const alternativeOutputPath = path.join(outputDir, `${nameWithoutExt}.json`)
+                try {
+                  await fs.access(alternativeOutputPath)
+                  const stats = await this.videoRepository.loadTranscriptionData(videoId, alternativeOutputPath)
+                  resolve({
+                    success: true,
+                    stats,
+                    outputPath: alternativeOutputPath
+                  })
+                  return
+                } catch {
+                  reject(
+                    new Error(
+                      `Docker sprech completed but output file not found: ${outputPath} or ${alternativeOutputPath}`
+                    )
+                  )
+                  return
+                }
+              }
+
+              const stats = await this.videoRepository.loadTranscriptionData(videoId, outputPath)
+
+              resolve({
+                success: true,
+                stats,
+                outputPath
+              })
+            } else {
+              const errorMsg = `Docker sprech command failed (code ${code}): ${stderr}`
+              reject(new Error(errorMsg))
+            }
+          } catch (error: any) {
+            reject(error)
           }
-        } catch (error: any) {
-          reject(error)
-        }
-      })
-    })
+        })
+      } catch (error) {
+        throw new Error(`Error processing audio file: ${error.message}`)
+      }
+    } catch (error) {
+      throw new Error(`Error in processAudioFile: ${error.message}`)
+    }
   }
 
   private async handleSuccessfulProcessing(videoId: number, result: ProcessingResult): Promise<void> {
