@@ -284,7 +284,7 @@ export class ProcessingQueue {
       const transcriptionStats = await this.videoRepository.loadTranscriptionData(videoId, result.outputPath)
 
       console.info(`📝 [Video ${videoId}] Phase 3/3: Mise à jour du statut et nettoyage...`)
-      
+
       // Mettre à jour le statut avec le chemin du fichier
       await this.videoRepository.updateVideoStatus(videoId, 'completed', {
         transcriptionFile: result.outputPath

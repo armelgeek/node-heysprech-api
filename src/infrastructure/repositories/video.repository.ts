@@ -103,12 +103,93 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
 
   async getRecentVideos(limit: number = 20): Promise<VideoModel[]> {
     const results = await db
-      .select()
+      .select({
+        video: videos,
+        segments: audioSegments,
+        words: wordSegments
+      })
       .from(videos)
+      .leftJoin(audioSegments, eq(videos.id, audioSegments.videoId))
+      .leftJoin(wordSegments, eq(audioSegments.id, wordSegments.audioSegmentId))
       .orderBy(sql`${videos.createdAt} DESC`)
       .limit(limit)
 
-    return results.map((video) => new VideoModel(this.mapVideoFromDb(video)))
+    // Regrouper les résultats par vidéo
+    const videoMap = new Map()
+
+    for (const row of results) {
+      if (!videoMap.has(row.video.id)) {
+        videoMap.set(row.video.id, {
+          ...this.mapVideoFromDb(row.video),
+          segments: [],
+          vocabulary: new Map()
+        })
+      }
+
+      const videoData = videoMap.get(row.video.id)
+
+      // Ajouter le segment s'il n'existe pas déjà
+      if (row.segments && !videoData.segments.some((s) => s.id === row.segments!.id)) {
+        videoData.segments.push({
+          id: row.segments.id,
+          startTime: row.segments.startTime / 1000, // Convertir en secondes
+          endTime: row.segments.endTime / 1000,
+          text: row.segments.text,
+          translation: row.segments.translation,
+          language: row.segments.language,
+          words: []
+        })
+      }
+
+      // Ajouter le mot au segment et au vocabulaire
+      if (row.words) {
+        const rowWords = row.words
+        // Ajouter au segment correspondant
+        const segment = videoData.segments.find((s: { id: number }) => s.id === rowWords.audioSegmentId)
+        if (segment && !segment.words.some((w: { word: string }) => w.word === rowWords.word)) {
+          segment.words.push({
+            word: row.words.word,
+            startTime: row.words.startTime / 1000,
+            endTime: row.words.endTime / 1000,
+            confidenceScore: row.words.confidenceScore / 1000
+          })
+        }
+
+        // Ajouter au vocabulaire global
+        if (!videoData.vocabulary.has(row.words.word)) {
+          videoData.vocabulary.set(row.words.word, {
+            occurrences: [],
+            confidenceScoreAvg: 0
+          })
+        }
+        const wordData = videoData.vocabulary.get(row.words.word)
+        wordData.occurrences.push({
+          segmentId: row.words.audioSegmentId,
+          startTime: row.words.startTime / 1000,
+          endTime: row.words.endTime / 1000,
+          confidenceScore: row.words.confidenceScore / 1000
+        })
+      }
+    }
+
+    // Convertir les videoMap en tableau de VideoModel
+    return Array.from(videoMap.values()).map((videoData) => {
+      // Calculer les moyennes de confiance pour le vocabulaire
+      const vocabulary = Array.from(videoData.vocabulary.entries() as [string, { occurrences: any[] }][]).map(
+        ([word, data]) => ({
+          word,
+          occurrences: data.occurrences,
+          confidenceScoreAvg:
+            data.occurrences.reduce((acc: any, curr: { confidenceScore: any }) => acc + curr.confidenceScore, 0) /
+            data.occurrences.length
+        })
+      )
+
+      return new VideoModel({
+        ...videoData,
+        vocabulary: vocabulary.sort((a, b) => b.confidenceScoreAvg - a.confidenceScoreAvg)
+      })
+    })
   }
 
   async deleteVideo(id: number): Promise<void> {

@@ -265,7 +265,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         try {
           const stats = await this.videoService.getQueueStatus()
           return c.json(stats)
@@ -301,7 +301,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         try {
           await this.videoService.cleanQueue()
           return c.json({
@@ -313,7 +313,6 @@ export class VideoController implements Routes {
         }
       }
     )
-
 
     this.controller.openapi(
       createRoute({
@@ -341,7 +340,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         try {
           const videos = await this.videoService.getRecentVideos(20)
           return c.json(videos)
@@ -385,7 +384,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const id = Number.parseInt(c.req.param('id'))
         if (Number.isNaN(id)) {
           return c.json({ success: false, error: 'Invalid video ID' }, 400)
@@ -436,7 +435,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const id = Number.parseInt(c.req.param('id'))
         if (Number.isNaN(id)) {
           return c.json({ success: false, error: 'Invalid video ID' }, 400)
@@ -479,7 +478,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         try {
           const videos = await this.videoService.getRecentVideos(10)
           return c.json(

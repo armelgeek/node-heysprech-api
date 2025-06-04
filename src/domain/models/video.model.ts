@@ -1,5 +1,35 @@
 import { z } from 'zod'
 
+const VideoSegmentWordSchema = z.object({
+  word: z.string(),
+  startTime: z.number(),
+  endTime: z.number(),
+  confidenceScore: z.number()
+})
+
+const VideoSegmentSchema = z.object({
+  id: z.number(),
+  startTime: z.number(),
+  endTime: z.number(),
+  text: z.string(),
+  translation: z.string().optional(),
+  language: z.string(),
+  words: z.array(VideoSegmentWordSchema)
+})
+
+const VocabularyEntrySchema = z.object({
+  word: z.string(),
+  occurrences: z.array(
+    z.object({
+      segmentId: z.number(),
+      startTime: z.number(),
+      endTime: z.number(),
+      confidenceScore: z.number()
+    })
+  ),
+  confidenceScoreAvg: z.number()
+})
+
 export const VideoSchema = z.object({
   id: z.number().optional(),
   title: z.string(),
@@ -14,7 +44,9 @@ export const VideoSchema = z.object({
   transcriptionFile: z.string().optional(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),
-  processedAt: z.date().optional()
+  processedAt: z.date().optional(),
+  segments: z.array(VideoSegmentSchema).optional(),
+  vocabulary: z.array(VocabularyEntrySchema).optional()
 })
 
 export type Video = z.infer<typeof VideoSchema>
@@ -74,6 +106,14 @@ export class VideoModel {
 
   get updatedAt() {
     return this.data.updatedAt
+  }
+
+  get segments() {
+    return this.data.segments
+  }
+
+  get vocabulary() {
+    return this.data.vocabulary
   }
 
   static create(data: Omit<Video, 'id'>) {
