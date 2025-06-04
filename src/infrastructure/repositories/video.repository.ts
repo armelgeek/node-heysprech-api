@@ -3,8 +3,10 @@ import { eq, sql } from 'drizzle-orm'
 import { VideoModel, type Video } from '@/domain/models/video.model'
 import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
 import { db } from '../database/db'
+import { exerciseOptions, exerciseQuestions, exercises, wordEntries } from '../database/schema'
 import { audioSegments, processingLogs, videos, wordSegments } from '../database/schema/video.schema'
 import { BaseRepository } from './base.repository'
+import type { PgTransaction } from 'drizzle-orm/pg-core'
 
 interface TranscriptionSegment {
   start: number
@@ -129,7 +131,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       const videoData = videoMap.get(row.video.id)
 
       // Ajouter le segment s'il n'existe pas déjà
-      if (row.segments && !videoData.segments.some((s) => s.id === row.segments!.id)) {
+      if (row.segments && !videoData.segments.some((s: { id: number }) => s.id === row.segments!.id)) {
         videoData.segments.push({
           id: row.segments.id,
           startTime: row.segments.startTime / 1000, // Convertir en secondes
@@ -172,9 +174,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       }
     }
 
-    // Convertir les videoMap en tableau de VideoModel
     return Array.from(videoMap.values()).map((videoData) => {
-      // Calculer les moyennes de confiance pour le vocabulaire
       const vocabulary = Array.from(videoData.vocabulary.entries() as [string, { occurrences: any[] }][]).map(
         ([word, data]) => ({
           word,
@@ -252,18 +252,57 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       let vocabularyInserted = 0
 
       console.info(`📊 [Video ${videoId}] Analyse du contenu...`)
-      if (Array.isArray(jsonData.segments)) {
-        console.info(`🔄 [Video ${videoId}] Importation de ${jsonData.segments.length} segments audio...`)
-        await this.insertAudioSegments(jsonData.segments, videoId, jsonData.language || 'de')
-        segmentsInserted = jsonData.segments.length
-        console.info(`✅ [Video ${videoId}] Segments audio importés avec succès`)
-      }
 
-      if (Array.isArray(jsonData.vocabulary)) {
-        console.info(`🔤 [Video ${videoId}] Traitement du vocabulaire (${jsonData.vocabulary.length} mots)...`)
-        vocabularyInserted = jsonData.vocabulary.length
-        console.info(`✅ [Video ${videoId}] Vocabulaire traité avec succès`)
-      }
+      await db.transaction(async (tx) => {
+        // Insertion des segments audio
+        if (Array.isArray(jsonData.segments)) {
+          console.info(`🔄 [Video ${videoId}] Importation de ${jsonData.segments.length} segments audio...`)
+          await this.insertAudioSegments(jsonData.segments, videoId, jsonData.language || 'de')
+          segmentsInserted = jsonData.segments.length
+          console.info(`✅ [Video ${videoId}] Segments audio importés avec succès`)
+        }
+
+        // Traitement du vocabulaire et des exercices
+        if (Array.isArray(jsonData.vocabulary)) {
+          console.info(`🔤 [Video ${videoId}] Traitement du vocabulaire (${jsonData.vocabulary.length} mots)...`)
+
+          for (const word of jsonData.vocabulary) {
+            // Insérer le mot dans la table wordEntries
+            const [wordEntry] = await tx
+              .insert(wordEntries)
+              .values({
+                word: word.word,
+                language: word.metadata?.source_language || 'de',
+                translations: word.translations,
+                examples: word.examples,
+                level: word.level || 'intermediate',
+                metadata: word.metadata
+              })
+              .returning({ id: wordEntries.id })
+
+            // Traitement des exercices
+            if (word.exercises) {
+              console.info(`📝 [Video ${videoId}] Traitement des exercices pour le mot ${word.word}...`)
+              await this.insertExercises(tx, word.exercises, wordEntry.id)
+            }
+
+            // Traitement des prononciations
+            if (Array.isArray(word.pronunciations)) {
+              console.info(`🔊 [Video ${videoId}] Ajout des prononciations pour le mot ${word.word}...`)
+              const pronunciationValues = word.pronunciations.map((p: { file: any; type: any; language: any }) => ({
+                wordId: wordEntry.id,
+                filePath: p.file,
+                type: p.type,
+                language: p.language
+              }))
+              await tx.insert(pronunciations).values(pronunciationValues)
+            }
+          }
+
+          vocabularyInserted = jsonData.vocabulary.length
+          console.info(`✅ [Video ${videoId}] Vocabulaire traité avec succès`)
+        }
+      })
 
       const result = {
         segments: segmentsInserted,
@@ -279,6 +318,66 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       return result
     } catch (error) {
       throw new Error(`Erreur lors du chargement de la transcription: ${(error as Error).message}`)
+    }
+  }
+
+  private async insertExercises(tx: PgTransaction<any, any, any>, exercisesData: any, wordId: number): Promise<void> {
+    if (exercisesData.type === 'multiple_choice_pair') {
+      // Créer l'exercice
+      const [exercise] = await tx
+        .insert(exercises)
+        .values({
+          wordId,
+          type: exercisesData.type,
+          level: exercisesData.level || 'intermediate'
+        })
+        .returning({ id: exercises.id })
+
+      // Traitement des questions DE -> FR
+      if (exercisesData.de_to_fr) {
+        const [question] = await tx
+          .insert(exerciseQuestions)
+          .values({
+            exerciseId: exercise.id,
+            direction: 'de_to_fr',
+            questionDe: exercisesData.de_to_fr.question.de,
+            questionFr: exercisesData.de_to_fr.question.fr,
+            wordToTranslate: exercisesData.de_to_fr.word_to_translate,
+            correctAnswer: exercisesData.de_to_fr.correct_answer
+          })
+          .returning({ id: exerciseQuestions.id })
+
+        // Ajout des options
+        const options = exercisesData.de_to_fr.options.map((option) => ({
+          questionId: question.id,
+          optionText: option,
+          isCorrect: option === exercisesData.de_to_fr.correct_answer
+        }))
+        await tx.insert(exerciseOptions).values(options)
+      }
+
+      // Traitement des questions FR -> DE
+      if (exercisesData.fr_to_de) {
+        const [question] = await tx
+          .insert(exerciseQuestions)
+          .values({
+            exerciseId: exercise.id,
+            direction: 'fr_to_de',
+            questionDe: exercisesData.fr_to_de.question.de,
+            questionFr: exercisesData.fr_to_de.question.fr,
+            wordToTranslate: exercisesData.fr_to_de.word_to_translate,
+            correctAnswer: exercisesData.fr_to_de.correct_answer
+          })
+          .returning({ id: exerciseQuestions.id })
+
+        // Ajout des options
+        const options = exercisesData.fr_to_de.options.map((option) => ({
+          questionId: question.id,
+          optionText: option,
+          isCorrect: option === exercisesData.fr_to_de.correct_answer
+        }))
+        await tx.insert(exerciseOptions).values(options)
+      }
     }
   }
 

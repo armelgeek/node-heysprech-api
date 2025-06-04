@@ -15,6 +15,13 @@
       "when": 1748812279114,
       "tag": "0001_gorgeous_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1749064534881,
+      "tag": "0002_great_peter_parker",
+      "breakpoints": true
     }
   ]
 }
