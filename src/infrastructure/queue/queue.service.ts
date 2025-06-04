@@ -76,7 +76,7 @@ export class ProcessingQueue {
         await this.videoRepository.updateVideoStatus(videoId, 'processing')
 
         const result = await this.processAudioFile(job, videoId, validatedAudioPath)
-
+        console.log('result',result);
         if (result.success) {
           await this.handleSuccessfulProcessing(videoId, result)
         }
