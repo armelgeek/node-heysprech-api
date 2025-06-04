@@ -161,8 +161,6 @@ export class ProcessingQueue {
         'run',
         '--rm',
         '--volume',
-        `${baseDir}:/var/www/sprech-audios:rw`,
-        '--volume',
         `${baseDir}/audios:/app/audios:ro`,
         '--volume',
         `${baseDir}/de:/app/de:rw`,
