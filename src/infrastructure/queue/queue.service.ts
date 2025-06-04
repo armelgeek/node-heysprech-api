@@ -19,6 +19,12 @@ interface ProcessingResult {
   stats?: {
     segments: number
     vocabulary: number
+    pronunciationDetails?: Array<{
+      word: string
+      phonetics: string
+      type: string
+      pronunciation: string
+    }>
   }
   outputPath?: string
   error?: string
@@ -233,17 +239,42 @@ export class ProcessingQueue {
         reject(new Error(`Failed to start Docker sprech process: ${error.message}`))
       })
 
-      dockerProcess.on('close', (code) => {
+      dockerProcess.on('close', async (code) => {
         if (code === 0) {
-          // Succès du traitement
-          resolve({
-            success: true,
-            stats: {
-              segments: 0, // Ces valeurs seront à extraire de la sortie si possible
-              vocabulary: 0
-            },
-            outputPath: path.join(baseDir, targetLang, `${path.basename(audioPath, path.extname(audioPath))}.json`)
-          })
+          try {
+            // Mettre à jour la progression à 90%
+            await job.progress(90)
+            
+            // Chemin du fichier de sortie
+            const outputBaseName = path.basename(audioPath, path.extname(audioPath))
+            const outputPath = path.join(baseDir, targetLang, `${outputBaseName}.json`)
+            
+            // Vérifier si le fichier existe
+            const fileExists = await fs.access(outputPath).then(() => true).catch(() => false)
+            
+            if (fileExists) {
+              // Extraire les détails de prononciation
+              const details = await this.extractPronunciationDetails(outputPath)
+              
+              // Mettre à jour la progression à 100%
+              await job.progress(100)
+              
+              // Succès du traitement avec les statistiques détaillées
+              resolve({
+                success: true,
+                stats: {
+                  segments: details.segments,
+                  vocabulary: details.vocabulary.length,
+                  pronunciationDetails: details.vocabulary
+                },
+                outputPath
+              })
+            } else {
+              reject(new Error(`Output file not found: ${outputPath}`))
+            }
+          } catch (error: any) {
+            reject(new Error(`Error processing output file: ${error.message}`))
+          }
         } else {
           // Échec du traitement
           reject(new Error(`Docker process failed with code ${code}. Error: ${stderr}`))
@@ -506,6 +537,39 @@ export class ProcessingQueue {
         waiting: jobs[1].map((j) => ({ id: j.id, data: j.data })),
         recentCompleted: jobs[2].map((j) => ({ id: j.id, data: j.data })),
         recentFailed: jobs[3].map((j) => ({ id: j.id, data: j.data, reason: j.failedReason }))
+      }
+    }
+  }
+
+  private async extractPronunciationDetails(outputPath: string): Promise<{
+    segments: number;
+    vocabulary: {
+      word: string;
+      phonetics: string;
+      type: string;
+      pronunciation: string;
+    }[];
+  }> {
+    try {
+      const content = await fs.readFile(outputPath, 'utf-8')
+      const data = JSON.parse(content)
+      
+      return {
+        segments: Array.isArray(data.segments) ? data.segments.length : 0,
+        vocabulary: Array.isArray(data.vocabulary) 
+          ? data.vocabulary.map((item: any) => ({
+              word: item.word || '',
+              phonetics: item.phonetics || '',
+              type: item.type || 'unknown',
+              pronunciation: item.pronunciation || ''
+            }))
+          : []
+      }
+    } catch (error: any) {
+      console.error('Error extracting pronunciation details:', error)
+      return {
+        segments: 0,
+        vocabulary: []
       }
     }
   }
