@@ -162,26 +162,40 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     language: string
   }> {
     try {
+      console.info(`📖 [Video ${videoId}] Lecture du fichier de transcription...`)
       const fileContent = await fs.readFile(transcriptionFile, 'utf8')
       const jsonData = JSON.parse(fileContent)
+      console.info(`✅ [Video ${videoId}] Fichier JSON parsé avec succès`)
 
       let segmentsInserted = 0
       let vocabularyInserted = 0
 
+      console.info(`📊 [Video ${videoId}] Analyse du contenu...`)
       if (Array.isArray(jsonData.segments)) {
+        console.info(`🔄 [Video ${videoId}] Importation de ${jsonData.segments.length} segments audio...`)
         await this.insertAudioSegments(jsonData.segments, videoId, jsonData.language || 'de')
         segmentsInserted = jsonData.segments.length
+        console.info(`✅ [Video ${videoId}] Segments audio importés avec succès`)
       }
 
       if (Array.isArray(jsonData.vocabulary)) {
+        console.info(`🔤 [Video ${videoId}] Traitement du vocabulaire (${jsonData.vocabulary.length} mots)...`)
         vocabularyInserted = jsonData.vocabulary.length
+        console.info(`✅ [Video ${videoId}] Vocabulaire traité avec succès`)
       }
 
-      return {
+      const result = {
         segments: segmentsInserted,
         vocabulary: vocabularyInserted,
         language: jsonData.language || 'de'
       }
+
+      console.info(`📊 [Video ${videoId}] Résumé de l'importation:
+        - Segments audio: ${result.segments}
+        - Mots de vocabulaire: ${result.vocabulary}
+        - Langue: ${result.language}`)
+
+      return result
     } catch (error) {
       throw new Error(`Erreur lors du chargement de la transcription: ${(error as Error).message}`)
     }

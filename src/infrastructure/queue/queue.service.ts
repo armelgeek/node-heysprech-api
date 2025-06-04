@@ -212,14 +212,23 @@ export class ProcessingQueue {
         const output = data.toString()
         console.info(`Docker output: ${output.trim()}`)
 
-        // Mise à jour du progrès basée sur la sortie
+        // Mise à jour du progrès basée sur la sortie avec logs détaillés
         if (output.includes('Processing') && !progressReported) {
+          console.info(`🎯 [Video ${videoId}] Étape 1/4: Préparation du fichier audio en cours...`)
           job.progress(25)
         } else if (output.includes('Transcribing') && job.progress() < 50) {
+          console.info(`🎯 [Video ${videoId}] Étape 2/4: Transcription du texte en cours...`)
           job.progress(50)
           progressReported = true
         } else if (output.includes('Translating') && job.progress() < 75) {
+          console.info(`🎯 [Video ${videoId}] Étape 3/4: Traduction en cours...`)
           job.progress(75)
+        }
+
+        // Log des mots traités si présents dans la sortie
+        if (output.includes('Processing word:')) {
+          const word = output.split('Processing word:')[1].trim()
+          console.info(`📝 [Video ${videoId}] Traitement du mot: ${word}`)
         }
       })
 
@@ -235,6 +244,7 @@ export class ProcessingQueue {
 
       dockerProcess.on('close', (code) => {
         if (code === 0) {
+          console.info(`✅ [Video ${videoId}] Étape 4/4: Traitement Docker terminé avec succès`)
           // Succès du traitement
           resolve({
             success: true,
@@ -258,6 +268,7 @@ export class ProcessingQueue {
   }
 
   private async handleSuccessfulProcessing(videoId: number, result: ProcessingResult): Promise<void> {
+    console.info(`✨ [Video ${videoId}] Démarrage du processus de sauvegarde en base de données...`)
     await this.videoRepository.logProcessingStep(videoId, 'transcription', 'completed')
 
     if (!result.outputPath) {
@@ -265,11 +276,15 @@ export class ProcessingQueue {
     }
 
     // Charger les données de transcription dans la base de données
+    console.info(`📥 [Video ${videoId}] Phase 1/3: Début de l'importation des données...`)
     await this.videoRepository.logProcessingStep(videoId, 'database_import', 'started')
 
     try {
+      console.info(`📝 [Video ${videoId}] Phase 2/3: Lecture et analyse du fichier: ${result.outputPath}`)
       const transcriptionStats = await this.videoRepository.loadTranscriptionData(videoId, result.outputPath)
 
+      console.info(`📝 [Video ${videoId}] Phase 3/3: Mise à jour du statut et nettoyage...`)
+      
       // Mettre à jour le statut avec le chemin du fichier
       await this.videoRepository.updateVideoStatus(videoId, 'completed', {
         transcriptionFile: result.outputPath
@@ -277,6 +292,12 @@ export class ProcessingQueue {
 
       // Nettoyage des fichiers temporaires
       await this.cleanupTempFiles(videoId)
+
+      console.info(`✅ [Video ${videoId}] Importation terminée avec succès !`)
+      console.info(`📊 [Video ${videoId}] Statistiques:
+        - Segments traités: ${transcriptionStats.segments}
+        - Mots dans le vocabulaire: ${transcriptionStats.vocabulary}
+        - Langue: ${transcriptionStats.language}`)
 
       // Log du succès avec les statistiques détaillées
       await this.videoRepository.logProcessingStep(
