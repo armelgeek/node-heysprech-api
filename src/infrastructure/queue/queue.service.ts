@@ -145,20 +145,21 @@ export class ProcessingQueue {
 
   private processAudioFile(job: Job<QueueJobData>, videoId: number, audioPath: string): Promise<ProcessingResult> {
     const { sourceLang = 'de', targetLang = 'fr' } = job.data
-
-    let processPath = audioPath
     const baseDir = path.join(homedir(), 'sprech-audios')
+    let processPath = audioPath
 
-    // If the file is from uploads, it will have already been moved to the appropriate directory
+    // If the file is from uploads, it will have already been moved
     if (audioPath.startsWith('uploads/')) {
       const fileName = path.basename(audioPath)
       processPath = path.join(baseDir, 'de', fileName)
     }
 
     return new Promise((resolve, reject) => {
-      // Get the relative path from the base directory to use in Docker
+      // Get the relative path and filename for Docker
       const relativePath = path.relative(baseDir, processPath)
-      const baseDir = path.join(homedir(), 'sprech-audios')
+      const audioFileName = path.basename(processPath)
+
+      // Build Docker command with simpler volume mapping
       const dockerArgs = [
         'run',
         '--rm',
