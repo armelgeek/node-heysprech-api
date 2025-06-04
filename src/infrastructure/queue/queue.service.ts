@@ -69,13 +69,13 @@ export class ProcessingQueue {
         // Ensure output directories exist before processing
         await this.ensureOutputDirectories()
 
-        // Vérification que le fichier audio existe
-        await this.validateAudioFile(audioPath)
+        // Validate audio file and get the correct path
+        const validatedAudioPath = await this.validateAudioFile(audioPath)
 
         await this.videoRepository.logProcessingStep(videoId, 'transcription', 'started')
         await this.videoRepository.updateVideoStatus(videoId, 'processing')
 
-        const result = await this.processAudioFile(job, videoId, audioPath)
+        const result = await this.processAudioFile(job, videoId, validatedAudioPath)
 
         if (result.success) {
           await this.handleSuccessfulProcessing(videoId, result)
@@ -112,57 +112,58 @@ export class ProcessingQueue {
     }
   }
 
-  private async validateAudioFile(audioPath: string): Promise<void> {
+  private async validateAudioFile(audioPath: string): Promise<string> {
     try {
-      const stats = await fs.stat(audioPath)
+      // Convert to absolute path for consistent handling
+      const absolutePath = path.isAbsolute(audioPath) ? audioPath : path.join(process.cwd(), audioPath)
+
+      const stats = await fs.stat(absolutePath)
       if (!stats.isFile()) {
         throw new Error(`Audio file not found: ${audioPath}`)
       }
 
-      // Si le fichier est dans le dossier uploads, le déplacer vers audios
+      // If the file is in the uploads folder, move it to audios
       if (audioPath.startsWith('uploads/')) {
         const fileName = path.basename(audioPath)
-        const newPath = path.join(baseDir, 'audios', fileName)
-        await fs.rename(audioPath, newPath)
+        const newPath = path.join(process.cwd(), 'audios', fileName)
+        await fs.rename(absolutePath, newPath)
         console.info(`Moved file from ${audioPath} to ${newPath}`)
-        return
+        return newPath
       }
 
-      // Vérification que le fichier est dans le dossier audios
-      const audioDir = path.join(baseDir, 'audios')
-      const relativePath = path.relative(audioDir, audioPath)
+      // Check if the file is in the audios directory
+      const audioDir = path.join(process.cwd(), 'audios')
+      const resolvedAudioDir = path.resolve(audioDir)
+      const resolvedFilePath = path.resolve(absolutePath)
 
-      if (relativePath.startsWith('..')) {
-        throw new Error(`Audio file must be in the audios directory: ${audioPath}`)
+      // Check if the file is within the audios directory
+      if (!resolvedFilePath.startsWith(resolvedAudioDir + path.sep) && resolvedFilePath !== resolvedAudioDir) {
+        throw new Error(`Audio file must be in the audios directory. Expected in: ${audioDir}, got: ${audioPath}`)
       }
 
-      // Vérification de l'extension
-      const ext = path.extname(audioPath).toLowerCase()
+      // Check file extension
+      const ext = path.extname(absolutePath).toLowerCase()
       const supportedFormats = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
       if (!supportedFormats.includes(ext)) {
         console.warn(`Warning: Format ${ext} may not be supported. Supported: ${supportedFormats.join(', ')}`)
       }
-    } catch (error) {
-      throw new Error(`Cannot access audio file ${audioPath}: ${error}`)
+
+      console.info(`✅ Audio file validated: ${resolvedFilePath}`)
+      return resolvedFilePath
+    } catch (error: any) {
+      throw new Error(`Cannot access audio file ${audioPath}: ${error.message}`)
     }
   }
 
   private processAudioFile(job: Job<QueueJobData>, videoId: number, audioPath: string): Promise<ProcessingResult> {
     const { sourceLang = 'de', targetLang = 'fr' } = job.data
 
-    // Si le fichier est dans uploads, obtenir le nouveau chemin dans audios
-    let processPath = audioPath
-    if (audioPath.startsWith('uploads/')) {
-      const fileName = path.basename(audioPath)
-      processPath = path.join(baseDir, 'audios', fileName)
-    }
-
     return new Promise((resolve, reject) => {
-      // Construction de la commande Docker
-      const audioFileName = path.basename(processPath)
+      // Use the validated audio path directly
+      const audioFileName = path.basename(audioPath)
 
       // Get absolute paths to ensure they exist
-      const currentDir = baseDir
+      const currentDir = process.cwd()
       const audiosDir = path.join(currentDir, 'audios')
       const deDir = path.join(currentDir, 'de')
       const frDir = path.join(currentDir, 'fr')
@@ -172,9 +173,13 @@ export class ProcessingQueue {
         'run',
         '--rm',
         '--volume',
-        'heysprech-audios:/app/audios:ro',
+        `${audiosDir}:/app/audios:ro`,
         '--volume',
-        'heysprech-de:/app/de:rw',
+        `${deDir}:/app/de:rw`,
+        '--volume',
+        `${frDir}:/app/fr:rw`,
+        '--volume',
+        `${enDir}:/app/en:rw`,
         'heysprech-api',
         `/app/audios/${audioFileName}`,
         '--source-lang',
@@ -237,7 +242,7 @@ export class ProcessingQueue {
 
           if (code === 0) {
             // Le fichier de sortie sera dans le dossier correspondant à la langue cible
-            const outputDir = path.join(baseDir, targetLang)
+            const outputDir = path.join(process.cwd(), targetLang)
             const outputPath = path.join(outputDir, `${audioFileName}.json`)
 
             // Vérification que le fichier de sortie existe
@@ -416,7 +421,7 @@ export class ProcessingQueue {
         } catch (createError) {
           throw new Error(
             `Failed to create or access directory ${dirPath}: ${createError}. ` +
-              `This might be due to insufficient permissions or read-only filesystem.`
+            `This might be due to insufficient permissions or read-only filesystem.`
           )
         }
       }
