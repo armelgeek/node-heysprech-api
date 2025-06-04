@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { ProcessingQueue } from '@/infrastructure/queue/queue.service'
 import { VideoRepository } from '@/infrastructure/repositories/video.repository'
@@ -6,9 +7,12 @@ import type { VideoModel } from '@/domain/models/video.model'
 import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
 
 export class VideoService {
+  private baseDir: string
   videoRepository: VideoRepositoryInterface
   queue: ProcessingQueue
+
   constructor() {
+    this.baseDir = path.join(homedir(), 'sprech-audios')
     this.videoRepository = new VideoRepository()
     this.queue = new ProcessingQueue()
     this.createDirectories().catch((error) => {
@@ -17,13 +21,15 @@ export class VideoService {
   }
 
   async createDirectories() {
-    const dirs = ['audios', 'transcriptions', 'temp']
-    for (const dir of dirs) {
-      try {
-        await fs.mkdir(dir, { recursive: true })
-      } catch (error) {
-        console.warn(`Dossier ${dir} existe déjà ou erreur:`, error)
+    const dirs = ['temp', 'transcriptions', 'audios']
+    try {
+      await fs.mkdir(this.baseDir, { recursive: true })
+      for (const dir of dirs) {
+        const fullPath = path.join(this.baseDir, dir)
+        await fs.mkdir(fullPath, { recursive: true })
       }
+    } catch (error) {
+      console.warn(`Erreur lors de la création des dossiers:`, error)
     }
   }
 
@@ -39,7 +45,7 @@ export class VideoService {
       title?: string
     } = {}
   ): Promise<VideoModel> {
-    const tempInfoFile = path.join('temp', `info_${Date.now()}.txt`)
+    const tempInfoFile = path.join(this.baseDir, 'temp', `info_${Date.now()}.txt`)
     const videoInfo = {
       originalFilename: file.originalname,
       filePath: file.path,
