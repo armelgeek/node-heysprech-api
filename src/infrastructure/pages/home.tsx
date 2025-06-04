@@ -87,7 +87,12 @@ Home.get('/', (c) => {
 
           <div class="grid grid-cols-1 sm:grid-cols-8 gap-4">
             <div class="sm:col-span-8 p-4 sm:p-8 bg-white bg-opacity-5 rounded-lg">
-              <form action="/api/v1/upload-audio" method="post" enctype="multipart/form-data" class="flex flex-col gap-4">
+              <form
+                action="/api/v1/upload-audio"
+                method="post"
+                enctype="multipart/form-data"
+                class="flex flex-col gap-4"
+              >
                 <div>
                   <label class="block text-sm font-medium text-neutral-200">Audio File</label>
                   <input

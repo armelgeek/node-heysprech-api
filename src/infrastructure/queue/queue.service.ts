@@ -65,6 +65,9 @@ export class ProcessingQueue {
       const { videoId, audioPath } = job.data
 
       try {
+        // Ensure output directories exist before processing
+        await this.ensureOutputDirectories()
+
         // Vérification que le fichier audio existe
         await this.validateAudioFile(audioPath)
 
@@ -156,17 +159,25 @@ export class ProcessingQueue {
     return new Promise((resolve, reject) => {
       // Construction de la commande Docker
       const audioFileName = path.basename(processPath)
+
+      // Get absolute paths to ensure they exist
+      const currentDir = process.cwd()
+      const audiosDir = path.join(currentDir, 'audios')
+      const deDir = path.join(currentDir, 'de')
+      const frDir = path.join(currentDir, 'fr')
+      const enDir = path.join(currentDir, 'en')
+
       const dockerArgs = [
         'run',
         '--rm',
         '--volume',
-        `${process.cwd()}/audios:/app/audios:ro`,
+        `${audiosDir}:/app/audios:ro`,
         '--volume',
-        `${process.cwd()}/de:/app/de:rw`,
+        `${deDir}:/app/de:rw`,
         '--volume',
-        `${process.cwd()}/fr:/app/fr:rw`,
+        `${frDir}:/app/fr:rw`,
         '--volume',
-        `${process.cwd()}/en:/app/en:rw`,
+        `${enDir}:/app/en:rw`,
         'heysprech-api',
         `/app/audios/${audioFileName}`,
         '--source-lang',
@@ -178,7 +189,13 @@ export class ProcessingQueue {
       console.info(`Starting Docker sprech process for video ${videoId}:`, {
         audioFile: audioFileName,
         sourceLang,
-        targetLang
+        targetLang,
+        volumes: {
+          audios: audiosDir,
+          de: deDir,
+          fr: frDir,
+          en: enDir
+        }
       })
 
       const dockerProcess = spawn('docker', dockerArgs, {
@@ -380,16 +397,35 @@ export class ProcessingQueue {
 
   private async ensureOutputDirectories(): Promise<void> {
     const dirs = ['audios', 'de', 'fr', 'en']
+    const currentDir = process.cwd()
 
     for (const dir of dirs) {
-      const dirPath = path.join(process.cwd(), dir)
+      const dirPath = path.join(currentDir, dir)
       try {
-        await fs.access(dirPath)
+        await fs.access(dirPath, fs.constants.F_OK | fs.constants.W_OK)
+        console.info(`✅ Directory exists and is writable: ${dirPath}`)
       } catch {
-        await fs.mkdir(dirPath, { recursive: true })
-        console.info(`Created directory: ${dirPath}`)
+        try {
+          await fs.mkdir(dirPath, { recursive: true })
+
+          // Verify the directory was created and is writable
+          await fs.access(dirPath, fs.constants.F_OK | fs.constants.W_OK)
+          console.info(`✅ Created directory: ${dirPath}`)
+
+          // Test write permissions by creating a temporary file
+          const testFile = path.join(dirPath, '.write-test')
+          await fs.writeFile(testFile, 'test')
+          await fs.unlink(testFile)
+        } catch (createError) {
+          throw new Error(
+            `Failed to create or access directory ${dirPath}: ${createError}. ` +
+              `This might be due to insufficient permissions or read-only filesystem.`
+          )
+        }
       }
     }
+
+    console.info('✅ All output directories are ready')
   }
 
   async getQueueStatus() {

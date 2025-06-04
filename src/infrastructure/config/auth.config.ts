@@ -1,4 +1,3 @@
-import { env } from 'node:process'
 import { betterAuth, type User } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin as adminPlugin, emailOTP, openAPI } from 'better-auth/plugins'
