@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
+import os from 'node:os'
 import Queue, { type Job } from 'bull'
 import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
 import { VideoRepository } from '../repositories/video.repository'
@@ -22,7 +23,7 @@ interface ProcessingResult {
   outputPath?: string
   error?: string
 }
-
+const baseDir = path.join(os.homedir(), 'heysprech-data')
 export class ProcessingQueue {
   private queue: Queue.Queue<QueueJobData>
   private readonly videoRepository: VideoRepositoryInterface
@@ -121,14 +122,14 @@ export class ProcessingQueue {
       // Si le fichier est dans le dossier uploads, le déplacer vers audios
       if (audioPath.startsWith('uploads/')) {
         const fileName = path.basename(audioPath)
-        const newPath = path.join(process.cwd(), 'audios', fileName)
+        const newPath = path.join(baseDir, 'audios', fileName)
         await fs.rename(audioPath, newPath)
         console.info(`Moved file from ${audioPath} to ${newPath}`)
         return
       }
 
       // Vérification que le fichier est dans le dossier audios
-      const audioDir = path.join(process.cwd(), 'audios')
+      const audioDir = path.join(baseDir, 'audios')
       const relativePath = path.relative(audioDir, audioPath)
 
       if (relativePath.startsWith('..')) {
@@ -153,7 +154,7 @@ export class ProcessingQueue {
     let processPath = audioPath
     if (audioPath.startsWith('uploads/')) {
       const fileName = path.basename(audioPath)
-      processPath = path.join(process.cwd(), 'audios', fileName)
+      processPath = path.join(baseDir, 'audios', fileName)
     }
 
     return new Promise((resolve, reject) => {
@@ -161,7 +162,7 @@ export class ProcessingQueue {
       const audioFileName = path.basename(processPath)
 
       // Get absolute paths to ensure they exist
-      const currentDir = process.cwd()
+      const currentDir = baseDir
       const audiosDir = path.join(currentDir, 'audios')
       const deDir = path.join(currentDir, 'de')
       const frDir = path.join(currentDir, 'fr')
@@ -240,7 +241,7 @@ export class ProcessingQueue {
 
           if (code === 0) {
             // Le fichier de sortie sera dans le dossier correspondant à la langue cible
-            const outputDir = path.join(process.cwd(), targetLang)
+            const outputDir = path.join(baseDir, targetLang)
             const outputPath = path.join(outputDir, `${audioFileName}.json`)
 
             // Vérification que le fichier de sortie existe
@@ -397,7 +398,7 @@ export class ProcessingQueue {
 
   private async ensureOutputDirectories(): Promise<void> {
     const dirs = ['audios', 'de', 'fr', 'en']
-    const currentDir = process.cwd()
+    const currentDir = baseDir
 
     for (const dir of dirs) {
       const dirPath = path.join(currentDir, dir)
@@ -511,7 +512,7 @@ export class ProcessingQueue {
     targetLang: string = 'fr',
     options?: { priority?: number; delay?: number }
   ): Promise<Job<QueueJobData>> {
-    const audioPath = path.join(process.cwd(), 'audios', audioFileName)
+    const audioPath = path.join(baseDir, 'audios', audioFileName)
 
     return this.addVideo(
       {
