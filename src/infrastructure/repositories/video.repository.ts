@@ -24,14 +24,17 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     super(videos)
   }
 
+  private validateNumber(value: unknown, defaultValue: number = 0): number {
+    const num = Number(value)
+    return Number.isNaN(num) ? defaultValue : num
+  }
+
   private validateTime(time: unknown): number {
-    const num = Number(time)
-    return Number.isNaN(num) ? 0 : Math.floor(num * 1000)
+    return Math.floor(this.validateNumber(time) * 1000)
   }
 
   private validateScore(score: unknown): number {
-    const num = Number(score)
-    return Number.isNaN(num) ? 0 : Math.floor(num * 1000)
+    return Math.floor(this.validateNumber(score) * 1000)
   }
 
   async insertVideo(videoData: Omit<Video, 'id'>): Promise<number> {
@@ -193,7 +196,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       title: dbVideo.title,
       originalFilename: dbVideo.originalFilename,
       filePath: dbVideo.filePath,
-      fileSize: dbVideo.fileSize || 0,
+      fileSize: typeof dbVideo.fileSize === 'number' && !Number.isNaN(dbVideo.fileSize) ? dbVideo.fileSize : 0,
       language: dbVideo.language,
       transcriptionStatus: dbVideo.transcriptionStatus ?? 'pending',
       queueJobId: dbVideo.queueJobId || undefined,
