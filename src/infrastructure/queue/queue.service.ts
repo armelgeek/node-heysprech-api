@@ -264,10 +264,8 @@ export class ProcessingQueue {
             reject(error)
           }
         })
-      } catch (error) {
-        throw new Error(`Error processing audio file: ${error.message}`)
-      }
-    } catch (error) {
+      })
+    } catch (error:any) {
       throw new Error(`Error in processAudioFile: ${error.message}`)
     }
   }
