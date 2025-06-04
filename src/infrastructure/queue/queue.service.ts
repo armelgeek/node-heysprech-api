@@ -124,13 +124,11 @@ export class ProcessingQueue {
         return
       }
 
-      // Vérification que le fichier est dans le dossier sprech-audios
       const baseDir = path.join(homedir(), 'sprech-audios')
-      const audioDir = path.join(baseDir, 'audios')
-      const relativePath = path.relative(audioDir, audioPath)
+      const relativePath = path.relative(baseDir, audioPath)
 
       if (relativePath.startsWith('..')) {
-        throw new Error(`Audio file must be in ${audioDir}: ${audioPath}`)
+        throw new Error(`Audio file must be in ${baseDir} or its subdirectories: ${audioPath}`)
       }
 
       // Vérification de l'extension
@@ -161,15 +159,9 @@ export class ProcessingQueue {
         'run',
         '--rm',
         '--volume',
-        `${baseDir}/audios:/app/audios:ro`,
-        '--volume',
-        `${baseDir}/de:/app/de:rw`,
-        '--volume',
-        `${baseDir}/fr:/app/fr:rw`,
-        '--volume',
-        `${baseDir}/en:/app/en:rw`,
+        `${baseDir}:/app:rw`,
         'heysprech-api',
-        `/app/audios/${audioFileName}`,
+        `${path.join('/app', path.relative(baseDir, processPath))}`,
         '--source-lang',
         sourceLang,
         '--target-lang',
