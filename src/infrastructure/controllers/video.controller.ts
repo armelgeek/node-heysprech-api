@@ -1,6 +1,3 @@
-import { mkdir } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { html } from 'hono/html'
@@ -57,10 +54,9 @@ export class VideoController implements Routes {
   }
 
   public initRoutes() {
-    const baseDir = path.join(homedir(), 'sprech-audios')
-    this.controller.use('/public/*', serveStatic({ root: baseDir }))
-    this.controller.use('/audios/*', serveStatic({ root: baseDir }))
-    this.controller.use('/transcriptions/*', serveStatic({ root: baseDir }))
+    this.controller.use('/public/*', serveStatic({ root: './' }))
+    this.controller.use('/audios/*', serveStatic({ root: './' }))
+    this.controller.use('/transcriptions/*', serveStatic({ root: './' }))
 
     this.controller.get('/', (c) => {
       return c.html(this.renderHomePage())
@@ -146,10 +142,7 @@ export class VideoController implements Routes {
             )
           }
 
-          const uploadDir = `${homedir()}/sprech-audios/audios`
-          await mkdir(uploadDir, { recursive: true })
-
-          const tempPath = `${uploadDir}/${Date.now()}-${file.name}`
+          const tempPath = `audios/${Date.now()}-${file.name}`
           await Bun.write(tempPath, file)
 
           const videoFile = {
