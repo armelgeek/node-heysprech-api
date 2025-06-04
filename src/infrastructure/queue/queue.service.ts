@@ -245,7 +245,7 @@ export class ProcessingQueue {
             outputPath: path.join(
               baseDir,
               sourceLang,
-              path.extname(audioPath),
+              `${path.basename(audioPath, path.extname(audioPath))}`,
               `${path.basename(audioPath, path.extname(audioPath))}.json`
             )
           })
