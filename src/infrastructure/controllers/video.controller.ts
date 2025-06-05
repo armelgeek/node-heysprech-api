@@ -3,10 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
+import { eq, inArray } from 'drizzle-orm'
 import { html } from 'hono/html'
 import { VideoService } from '@/application/services/video.service'
 import { db } from '../database/db'
-import type { Routes } from '../../domain/types'
 import {
   exerciseOptions,
   exerciseQuestions,
@@ -14,11 +14,8 @@ import {
   pronunciations,
   wordEntries
 } from '../database/schema/exercise.schema'
-import {
-  videos,
-  audioSegments,
-  wordSegments
-} from '../database/schema/video.schema'
+import { audioSegments, videos, wordSegments } from '../database/schema/video.schema'
+import type { Routes } from '../../domain/types'
 
 const baseDir = path.join(os.homedir(), 'heysprech-data')
 
@@ -635,6 +632,116 @@ export class VideoController implements Routes {
         })
         .from(pronunciations)
       return c.json(result)
+    })
+
+    // Récupérer les exercices d'une vidéo avec leurs questions et options, groupés par direction
+    this.controller.get('/videos/:id/exercises', async (c) => {
+      const videoId = Number(c.req.param('id'))
+
+      if (Number.isNaN(videoId)) {
+        return c.json({ error: 'ID de vidéo invalide' }, 400)
+      }
+
+      // Récupérer d'abord les segments audio de la vidéo
+      const audioSegmentsResult = await db
+        .select({
+          id: audioSegments.id,
+          text: audioSegments.text
+        })
+        .from(audioSegments)
+        .where(eq(audioSegments.videoId, videoId))
+
+      // Récupérer les word segments associés aux segments audio
+      const wordSegmentsResult = await db
+        .select({
+          id: wordSegments.id,
+          word: wordSegments.word,
+          audioSegmentId: wordSegments.audioSegmentId
+        })
+        .from(wordSegments)
+        .where(
+          inArray(
+            wordSegments.audioSegmentId,
+            audioSegmentsResult.map((seg) => seg.id)
+          )
+        )
+
+      // Récupérer les exercices associés aux mots
+      const exercisesResult = await db
+        .select({
+          id: exercises.id,
+          type: exercises.type,
+          level: exercises.level
+        })
+        .from(exercises)
+        .where(
+          inArray(
+            exercises.wordId,
+            wordSegmentsResult.map((word) => word.id)
+          )
+        )
+
+      // Récupérer les questions et options pour ces exercices
+      const questionsResult = await db
+        .select({
+          id: exerciseQuestions.id,
+          exerciseId: exerciseQuestions.exerciseId,
+          direction: exerciseQuestions.direction,
+          questionDe: exerciseQuestions.questionDe,
+          questionFr: exerciseQuestions.questionFr,
+          wordToTranslate: exerciseQuestions.wordToTranslate,
+          correctAnswer: exerciseQuestions.correctAnswer
+        })
+        .from(exerciseQuestions)
+        .where(
+          inArray(
+            exerciseQuestions.exerciseId,
+            exercisesResult.map((ex) => ex.id)
+          )
+        )
+
+      const optionsResult = await db
+        .select({
+          id: exerciseOptions.id,
+          questionId: exerciseOptions.questionId,
+          optionText: exerciseOptions.optionText,
+          isCorrect: exerciseOptions.isCorrect
+        })
+        .from(exerciseOptions)
+        .where(
+          inArray(
+            exerciseOptions.questionId,
+            questionsResult.map((q) => q.id)
+          )
+        )
+
+      // Organiser les résultats par direction
+      type DirectionType = 'de_to_fr' | 'fr_to_de'
+      const exercisesByDirection: Record<
+        DirectionType,
+        Array<{
+          exercise: (typeof exercisesResult)[0] | undefined
+          question: (typeof questionsResult)[0] & { options: typeof optionsResult }
+        }>
+      > = {
+        de_to_fr: [],
+        fr_to_de: []
+      }
+
+      questionsResult.forEach((question) => {
+        const options = optionsResult.filter((opt) => opt.questionId === question.id)
+        const exercise = exercisesResult.find((ex) => ex.id === question.exerciseId)
+
+        exercisesByDirection[question.direction as DirectionType].push({
+          exercise,
+          question: {
+            ...question,
+            options
+          }
+        })
+      })
+
+      return c.json(exercisesByDirection)
     })
   }
 
