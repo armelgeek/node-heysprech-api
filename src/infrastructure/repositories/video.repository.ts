@@ -306,49 +306,76 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       const vocabulary = Array.from(videoData.vocabulary.entries() as [string, any][])
         .map(([word, data]) => {
           // Transform translations from array to object
-          const translations =
-            data.translations && Array.isArray(data.translations)
-              ? data.translations.reduce((obj: Record<string, string>, trans: any) => {
-                  if (trans.language && trans.text) {
-                    obj[trans.language] = trans.text
-                  }
-                  return obj
-                }, {})
-              : {}
+          const translations = data.translations && Array.isArray(data.translations)
+            ? data.translations.reduce((obj: Record<string, string>, trans: any) => {
+                if (trans.language && trans.text) {
+                  obj[trans.language] = trans.text
+                }
+                return obj
+              }, {})
+            : {}
 
           // Transform exercise to match ExerciseDataSchema
           const exercise = data.exercises?.[0]
           const deToFrQuestion = exercise?.questions.find((q: { direction: string }) => q.direction === 'de_to_fr')
           const frToDeQuestion = exercise?.questions.find((q: { direction: string }) => q.direction === 'fr_to_de')
-
-          const transformedExercise = exercise
-            ? {
+          
+          // If we don't have both questions, return a default exercise structure
+          if (!exercise || !deToFrQuestion || !frToDeQuestion) {
+            return {
+              word,
+              occurrences: data.occurrences,
+              confidenceScoreAvg: this.calculateConfidenceScore(data.occurrences),
+              metadata: data.metadata,
+              translations,
+              examples: Array.isArray(data.examples) ? data.examples : [],
+              level: data.level,
+              exercises: {
                 type: 'multiple_choice_pair' as const,
-                level: exercise.level as 'beginner' | 'intermediate' | 'advanced',
-                de_to_fr: deToFrQuestion
-                  ? {
-                      question: {
-                        de: deToFrQuestion.questionDe,
-                        fr: deToFrQuestion.questionFr
-                      },
-                      word_to_translate: deToFrQuestion.wordToTranslate,
-                      correct_answer: deToFrQuestion.correctAnswer,
-                      options: deToFrQuestion.options.map((opt: { text: string }) => opt.text)
-                    }
-                  : null,
-                fr_to_de: frToDeQuestion
-                  ? {
-                      question: {
-                        de: frToDeQuestion.questionDe,
-                        fr: frToDeQuestion.questionFr
-                      },
-                      word_to_translate: frToDeQuestion.wordToTranslate,
-                      correct_answer: frToDeQuestion.correctAnswer,
-                      options: frToDeQuestion.options.map((opt: { text: string }) => opt.text)
-                    }
-                  : null
-              }
-            : null
+                level: 'intermediate',
+                de_to_fr: {
+                  question: { de: '', fr: '' },
+                  word_to_translate: '',
+                  correct_answer: '',
+                  options: []
+                },
+                fr_to_de: {
+                  question: { de: '', fr: '' },
+                  word_to_translate: '',
+                  correct_answer: '',
+                  options: []
+                }
+              },
+              pronunciations: (data.pronunciations || []).map((p: any) => ({
+                file: p.filePath,
+                type: p.type,
+                language: p.language
+              }))
+            }
+          }
+
+          const transformedExercise = {
+            type: 'multiple_choice_pair' as const,
+            level: exercise.level as 'beginner' | 'intermediate' | 'advanced',
+            de_to_fr: {
+              question: {
+                de: deToFrQuestion.questionDe,
+                fr: deToFrQuestion.questionFr
+              },
+              word_to_translate: deToFrQuestion.wordToTranslate,
+              correct_answer: deToFrQuestion.correctAnswer,
+              options: deToFrQuestion.options.map((opt: { text: string }) => opt.text)
+            },
+            fr_to_de: {
+              question: {
+                de: frToDeQuestion.questionDe,
+                fr: frToDeQuestion.questionFr
+              },
+              word_to_translate: frToDeQuestion.wordToTranslate,
+              correct_answer: frToDeQuestion.correctAnswer,
+              options: frToDeQuestion.options.map((opt: { text: string }) => opt.text)
+            }
+          }
 
           return {
             word,
@@ -358,10 +385,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
             translations,
             examples: Array.isArray(data.examples) ? data.examples : [],
             level: data.level,
-            exercises:
-              transformedExercise && transformedExercise.de_to_fr && transformedExercise.fr_to_de
-                ? transformedExercise
-                : null,
+            exercises: transformedExercise,
             pronunciations: (data.pronunciations || []).map((p: any) => ({
               file: p.filePath,
               type: p.type,
