@@ -291,7 +291,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
             // Traitement des exercices
             if (word.exercises) {
               console.info(`📝 [Video ${videoId}] Traitement des exercices pour le mot ${word.word}...`)
-              await this.insertExercises(tx, word.exercises, wordEntry.id)
+              await this.insertExercisesTx(tx, word.exercises, wordEntry.id)
             }
 
             // Traitement des prononciations
