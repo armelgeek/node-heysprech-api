@@ -306,20 +306,21 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       const vocabulary = Array.from(videoData.vocabulary.entries() as [string, any][])
         .map(([word, data]) => {
           // Transform translations from array to object
-          const translations = data.translations && Array.isArray(data.translations)
-            ? data.translations.reduce((obj: Record<string, string>, trans: any) => {
-                if (trans.language && trans.text) {
-                  obj[trans.language] = trans.text
-                }
-                return obj
-              }, {})
-            : {}
+          const translations =
+            data.translations && Array.isArray(data.translations)
+              ? data.translations.reduce((obj: Record<string, string>, trans: any) => {
+                  if (trans.language && trans.text) {
+                    obj[trans.language] = trans.text
+                  }
+                  return obj
+                }, {})
+              : {}
 
           // Transform exercise to match ExerciseDataSchema
           const exercise = data.exercises?.[0]
           const deToFrQuestion = exercise?.questions.find((q: { direction: string }) => q.direction === 'de_to_fr')
           const frToDeQuestion = exercise?.questions.find((q: { direction: string }) => q.direction === 'fr_to_de')
-          
+
           // If we don't have both questions, return a default exercise structure
           if (!exercise || !deToFrQuestion || !frToDeQuestion) {
             return {

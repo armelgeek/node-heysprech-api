@@ -5,7 +5,20 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { html } from 'hono/html'
 import { VideoService } from '@/application/services/video.service'
-import type { Routes } from '@/domain/types'
+import { db } from '../database/db'
+import type { Routes } from '../../domain/types'
+import {
+  exerciseOptions,
+  exerciseQuestions,
+  exercises,
+  pronunciations,
+  wordEntries
+} from '../database/schema/exercise.schema'
+import {
+  videos,
+  audioSegments,
+  wordSegments
+} from '../database/schema/video.schema'
 
 const baseDir = path.join(os.homedir(), 'heysprech-data')
 
@@ -499,6 +512,130 @@ export class VideoController implements Routes {
         }
       }
     )
+
+    // Nouvel endpoint pour récupérer toutes les vidéos
+    this.controller.get('/videos', async (c) => {
+      const result = await db
+        .select({
+          id: videos.id,
+          title: videos.title,
+          originalFilename: videos.originalFilename,
+          filePath: videos.filePath,
+          fileSize: videos.fileSize,
+          duration: videos.duration,
+          language: videos.language,
+          transcriptionStatus: videos.transcriptionStatus,
+          createdAt: videos.createdAt,
+          updatedAt: videos.updatedAt
+        })
+        .from(videos)
+      return c.json(result)
+    })
+
+    // Récupérer tous les segments audio
+    this.controller.get('/audio-segments', async (c) => {
+      const result = await db
+        .select({
+          id: audioSegments.id,
+          videoId: audioSegments.videoId,
+          startTime: audioSegments.startTime,
+          endTime: audioSegments.endTime,
+          text: audioSegments.text,
+          translation: audioSegments.translation,
+          language: audioSegments.language
+        })
+        .from(audioSegments)
+      return c.json(result)
+    })
+
+    // Récupérer tous les segments de mots
+    this.controller.get('/word-segments', async (c) => {
+      const result = await db
+        .select({
+          id: wordSegments.id,
+          audioSegmentId: wordSegments.audioSegmentId,
+          word: wordSegments.word,
+          startTime: wordSegments.startTime,
+          endTime: wordSegments.endTime,
+          confidenceScore: wordSegments.confidenceScore,
+          positionInSegment: wordSegments.positionInSegment
+        })
+        .from(wordSegments)
+      return c.json(result)
+    })
+
+    // Récupérer toutes les entrées de mots
+    this.controller.get('/word-entries', async (c) => {
+      const result = await db
+        .select({
+          id: wordEntries.id,
+          word: wordEntries.word,
+          language: wordEntries.language,
+          translations: wordEntries.translations,
+          examples: wordEntries.examples,
+          level: wordEntries.level,
+          metadata: wordEntries.metadata
+        })
+        .from(wordEntries)
+      return c.json(result)
+    })
+
+    // Récupérer tous les exercices
+    this.controller.get('/exercises', async (c) => {
+      const result = await db
+        .select({
+          id: exercises.id,
+          wordId: exercises.wordId,
+          type: exercises.type,
+          level: exercises.level,
+          createdAt: exercises.createdAt
+        })
+        .from(exercises)
+      return c.json(result)
+    })
+
+    // Récupérer toutes les questions d'exercices
+    this.controller.get('/exercise-questions', async (c) => {
+      const result = await db
+        .select({
+          id: exerciseQuestions.id,
+          exerciseId: exerciseQuestions.exerciseId,
+          direction: exerciseQuestions.direction,
+          questionDe: exerciseQuestions.questionDe,
+          questionFr: exerciseQuestions.questionFr,
+          wordToTranslate: exerciseQuestions.wordToTranslate,
+          correctAnswer: exerciseQuestions.correctAnswer
+        })
+        .from(exerciseQuestions)
+      return c.json(result)
+    })
+
+    // Récupérer toutes les options d'exercices
+    this.controller.get('/exercise-options', async (c) => {
+      const result = await db
+        .select({
+          id: exerciseOptions.id,
+          questionId: exerciseOptions.questionId,
+          optionText: exerciseOptions.optionText,
+          isCorrect: exerciseOptions.isCorrect
+        })
+        .from(exerciseOptions)
+      return c.json(result)
+    })
+
+    // Récupérer toutes les prononciations
+    this.controller.get('/pronunciations', async (c) => {
+      const result = await db
+        .select({
+          id: pronunciations.id,
+          wordId: pronunciations.wordId,
+          filePath: pronunciations.filePath,
+          type: pronunciations.type,
+          language: pronunciations.language
+        })
+        .from(pronunciations)
+      return c.json(result)
+    })
   }
 
   private renderHomePage() {
