@@ -122,7 +122,23 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   }
 
   async getRecentVideos(limit: number = 20): Promise<VideoModel[]> {
-    const results = await db
+    // 1. Récupérer les données brutes
+    const results = await this.fetchRecentVideosData(limit)
+
+    // 2. Regrouper par vidéo
+    const videoMap = new Map()
+
+    // 3. Traiter chaque ligne
+    for (const row of results) {
+      this.processVideoRow(row, videoMap)
+    }
+
+    // 4. Transformer en VideoModel
+    return this.transformToVideoModels(videoMap)
+  }
+
+  private fetchRecentVideosData(limit: number) {
+    return db
       .select({
         video: videos,
         segments: audioSegments,
@@ -143,131 +159,155 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       .leftJoin(pronunciations, eq(wordEntries.id, pronunciations.wordId))
       .orderBy(sql`${videos.createdAt} DESC`)
       .limit(limit)
+  }
 
-    // Regrouper les résultats par vidéo
-    const videoMap = new Map()
+  private processVideoRow(row: any, videoMap: Map<number, any>) {
+    // Initialiser la vidéo si nécessaire
+    if (!videoMap.has(row.video.id)) {
+      videoMap.set(row.video.id, {
+        ...this.mapVideoFromDb(row.video),
+        segments: [],
+        vocabulary: new Map()
+      })
+    }
 
-    for (const row of results) {
-      if (!videoMap.has(row.video.id)) {
-        videoMap.set(row.video.id, {
-          ...this.mapVideoFromDb(row.video),
-          segments: [],
-          vocabulary: new Map()
-        })
-      }
+    const videoData = videoMap.get(row.video.id)
 
-      const videoData = videoMap.get(row.video.id)
+    // Traiter le segment audio
+    if (row.segments) {
+      this.processSegment(row.segments, videoData)
+    }
 
-      // Ajouter le segment s'il n'existe pas déjà
-      if (row.segments && !videoData.segments.some((s: { id: number }) => s.id === row.segments!.id)) {
-        videoData.segments.push({
-          id: row.segments.id,
-          startTime: row.segments.startTime / 1000,
-          endTime: row.segments.endTime / 1000,
-          text: row.segments.text,
-          translation: row.segments.translation,
-          language: row.segments.language,
-          words: []
-        })
-      }
+    // Traiter le mot et ses données associées
+    if (row.words) {
+      this.processWord(row, videoData)
+    }
+  }
 
-      // Ajouter le mot au segment et au vocabulaire
-      if (row.words) {
-        const rowWords = row.words
-        // Ajouter au segment correspondant
-        const segment = videoData.segments.find((s: { id: number }) => s.id === rowWords.audioSegmentId)
-        if (segment && !segment.words.some((w: { word: string }) => w.word === rowWords.word)) {
-          segment.words.push({
-            word: row.words.word,
-            startTime: row.words.startTime / 1000,
-            endTime: row.words.endTime / 1000,
-            confidenceScore: row.words.confidenceScore / 1000
-          })
-        }
+  private processSegment(segment: any, videoData: any) {
+    if (!videoData.segments.some((s: { id: number }) => s.id === segment.id)) {
+      videoData.segments.push({
+        id: segment.id,
+        startTime: segment.startTime / 1000,
+        endTime: segment.endTime / 1000,
+        text: segment.text,
+        translation: segment.translation,
+        language: segment.language,
+        words: []
+      })
+    }
+  }
 
-        // Ajouter au vocabulaire global
-        if (!videoData.vocabulary.has(row.words.word)) {
-          videoData.vocabulary.set(row.words.word, {
-            occurrences: [],
-            confidenceScoreAvg: 0,
-            metadata: row.wordEntry?.metadata ?? null,
-            translations: row.wordEntry?.translations ?? [],
-            examples: row.wordEntry?.examples ?? [],
-            level: row.wordEntry?.level ?? 'intermediate',
-            exercises: [],
-            pronunciations: []
-          })
-        }
+  private processWord(row: any, videoData: any) {
+    const { words: rowWords, wordEntry, exercise, exerciseQuestion, exerciseOption, pronunciation } = row
 
-        const wordData = videoData.vocabulary.get(row.words.word)
+    // Ajouter au segment
+    const segment = videoData.segments.find((s: { id: number }) => s.id === rowWords.audioSegmentId)
+    if (segment && !segment.words.some((w: { word: string }) => w.word === rowWords.word)) {
+      segment.words.push(this.createWordData(rowWords))
+    }
 
-        // Ajouter l'occurrence
-        wordData.occurrences.push({
-          segmentId: row.words.audioSegmentId,
-          startTime: row.words.startTime / 1000,
-          endTime: row.words.endTime / 1000,
-          confidenceScore: row.words.confidenceScore / 1000
-        })
+    // Initialiser ou mettre à jour le vocabulaire
+    if (!videoData.vocabulary.has(rowWords.word)) {
+      videoData.vocabulary.set(rowWords.word, this.initializeVocabularyEntry(wordEntry))
+    }
 
-        // Ajouter l'exercice s'il n'existe pas déjà et qu'il existe
-        if (row.exercise?.id && !wordData.exercises.some((ex: { id: number }) => ex.id === row.exercise!.id)) {
-          const exercise: Exercise = {
-            id: row.exercise.id,
-            type: row.exercise.type,
-            level: row.exercise.level,
-            questions: []
-          }
+    const wordData = videoData.vocabulary.get(rowWords.word)
+    this.updateWordData(wordData, rowWords, exercise, exerciseQuestion, exerciseOption, pronunciation)
+  }
 
-          // Ajouter la question si elle existe
-          if (row.exerciseQuestion?.id) {
-            const question: ExerciseQuestion = {
-              id: row.exerciseQuestion.id,
-              direction: row.exerciseQuestion.direction as 'de_to_fr' | 'fr_to_de',
-              questionDe: row.exerciseQuestion.questionDe,
-              questionFr: row.exerciseQuestion.questionFr,
-              wordToTranslate: row.exerciseQuestion.wordToTranslate,
-              correctAnswer: row.exerciseQuestion.correctAnswer,
-              options: []
-            }
+  private createWordData(word: any) {
+    return {
+      word: word.word,
+      startTime: word.startTime / 1000,
+      endTime: word.endTime / 1000,
+      confidenceScore: word.confidenceScore / 1000
+    }
+  }
 
-            // Ajouter l'option si elle existe
-            if (row.exerciseOption?.id) {
-              question.options.push({
-                id: row.exerciseOption.id,
-                text: row.exerciseOption.optionText,
-                isCorrect: row.exerciseOption.isCorrect
-              })
-            }
+  private initializeVocabularyEntry(wordEntry: any) {
+    return {
+      occurrences: [],
+      confidenceScoreAvg: 0,
+      metadata: wordEntry?.metadata ?? null,
+      translations: wordEntry?.translations ?? [],
+      examples: wordEntry?.examples ?? [],
+      level: wordEntry?.level ?? 'intermediate',
+      exercises: [],
+      pronunciations: []
+    }
+  }
 
-            exercise.questions.push(question)
-          }
+  private updateWordData(wordData: any, words: any, exercise: any, question: any, option: any, pronunciation: any) {
+    // Ajouter l'occurrence
+    wordData.occurrences.push({
+      segmentId: words.audioSegmentId,
+      startTime: words.startTime / 1000,
+      endTime: words.endTime / 1000,
+      confidenceScore: words.confidenceScore / 1000
+    })
 
-          wordData.exercises.push(exercise)
-        }
-
-        // Ajouter la prononciation si elle n'existe pas déjà et qu'elle existe
-        if (
-          row.pronunciation?.id &&
-          !wordData.pronunciations.some((p: { id: number }) => p.id === row.pronunciation!.id)
-        ) {
-          wordData.pronunciations.push({
-            id: row.pronunciation.id,
-            filePath: row.pronunciation.filePath,
-            type: row.pronunciation.type,
-            language: row.pronunciation.language
-          })
-        }
+    // Ajouter l'exercice si nécessaire
+    if (exercise?.id && !wordData.exercises.some((ex: { id: number }) => ex.id === exercise.id)) {
+      const newExercise = this.createExercise(exercise, question, option)
+      if (newExercise) {
+        wordData.exercises.push(newExercise)
       }
     }
 
+    // Ajouter la prononciation si nécessaire
+    if (pronunciation?.id && !wordData.pronunciations.some((p: { id: number }) => p.id === pronunciation.id)) {
+      wordData.pronunciations.push({
+        id: pronunciation.id,
+        filePath: pronunciation.filePath,
+        type: pronunciation.type,
+        language: pronunciation.language
+      })
+    }
+  }
+
+  private createExercise(exercise: any, question: any, option: any): Exercise | null {
+    if (!exercise) return null
+
+    const newExercise: Exercise = {
+      id: exercise.id,
+      type: exercise.type,
+      level: exercise.level,
+      questions: []
+    }
+
+    if (question?.id) {
+      const newQuestion: ExerciseQuestion = {
+        id: question.id,
+        direction: question.direction as 'de_to_fr' | 'fr_to_de',
+        questionDe: question.questionDe,
+        questionFr: question.questionFr,
+        wordToTranslate: question.wordToTranslate,
+        correctAnswer: question.correctAnswer,
+        options: []
+      }
+
+      if (option?.id) {
+        newQuestion.options.push({
+          id: option.id,
+          text: option.optionText,
+          isCorrect: option.isCorrect
+        })
+      }
+
+      newExercise.questions.push(newQuestion)
+    }
+
+    return newExercise
+  }
+
+  private transformToVideoModels(videoMap: Map<number, any>): VideoModel[] {
     return Array.from(videoMap.values()).map((videoData) => {
       const vocabulary = Array.from(videoData.vocabulary.entries() as [string, any][])
         .map(([word, data]) => ({
           word,
           occurrences: data.occurrences,
-          confidenceScoreAvg:
-            data.occurrences.reduce((acc: number, curr: { confidenceScore: number }) => acc + curr.confidenceScore, 0) /
-            data.occurrences.length,
+          confidenceScoreAvg: this.calculateConfidenceScore(data.occurrences),
           metadata: data.metadata,
           translations: Array.isArray(data.translations) ? data.translations : [],
           examples: Array.isArray(data.examples) ? data.examples : [],
@@ -286,6 +326,11 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
         vocabulary
       })
     })
+  }
+
+  private calculateConfidenceScore(occurrences: { confidenceScore: number }[]): number {
+    if (!occurrences.length) return 0
+    return occurrences.reduce((acc, curr) => acc + curr.confidenceScore, 0) / occurrences.length
   }
 
   async deleteVideo(id: number): Promise<void> {
