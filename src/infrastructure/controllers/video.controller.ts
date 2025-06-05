@@ -815,103 +815,105 @@ export class VideoController implements Routes {
         return c.json({ error: 'ID de vidéo invalide' }, 400)
       }
 
-      // Récupérer d'abord les segments audio de la vidéo
-      const audioSegmentsResult = await db
+      // Récupérer tous les exercices liés à la vidéo en une seule requête
+      const exercisesData = await db
         .select({
-          id: audioSegments.id,
-          text: audioSegments.text
+          audioSegment: {
+            id: audioSegments.id,
+            text: audioSegments.text
+          },
+          wordSegment: {
+            id: wordSegments.id,
+            word: wordSegments.word
+          },
+          wordEntry: {
+            id: wordEntries.id,
+            word: wordEntries.word,
+            translations: wordEntries.translations
+          },
+          exercise: {
+            id: exercises.id,
+            type: exercises.type,
+            level: exercises.level,
+            wordId: exercises.wordId
+          },
+          question: {
+            id: exerciseQuestions.id,
+            direction: exerciseQuestions.direction,
+            questionDe: exerciseQuestions.questionDe,
+            questionFr: exerciseQuestions.questionFr,
+            wordToTranslate: exerciseQuestions.wordToTranslate,
+            correctAnswer: exerciseQuestions.correctAnswer
+          },
+          option: {
+            id: exerciseOptions.id,
+            optionText: exerciseOptions.optionText,
+            isCorrect: exerciseOptions.isCorrect
+          }
         })
         .from(audioSegments)
+        .innerJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
+        .innerJoin(wordEntries, eq(wordEntries.word, wordSegments.word))
+        .innerJoin(exercises, eq(exercises.wordId, wordEntries.id))
+        .innerJoin(exerciseQuestions, eq(exerciseQuestions.exerciseId, exercises.id))
+        .leftJoin(exerciseOptions, eq(exerciseOptions.questionId, exerciseQuestions.id))
         .where(eq(audioSegments.videoId, videoId))
 
-      // Récupérer les word segments associés aux segments audio
-      const wordSegmentsResult = await db
-        .select({
-          id: wordSegments.id,
-          word: wordSegments.word,
-          audioSegmentId: wordSegments.audioSegmentId
-        })
-        .from(wordSegments)
-        .where(
-          inArray(
-            wordSegments.audioSegmentId,
-            audioSegmentsResult.map((seg) => seg.id)
-          )
-        )
-
-      // Récupérer les exercices associés aux mots
-      const exercisesResult = await db
-        .select({
-          id: exercises.id,
-          type: exercises.type,
-          level: exercises.level
-        })
-        .from(exercises)
-        .where(
-          inArray(
-            exercises.wordId,
-            wordSegmentsResult.map((word) => word.id)
-          )
-        )
-
-      // Récupérer les questions et options pour ces exercices
-      const questionsResult = await db
-        .select({
-          id: exerciseQuestions.id,
-          exerciseId: exerciseQuestions.exerciseId,
-          direction: exerciseQuestions.direction,
-          questionDe: exerciseQuestions.questionDe,
-          questionFr: exerciseQuestions.questionFr,
-          wordToTranslate: exerciseQuestions.wordToTranslate,
-          correctAnswer: exerciseQuestions.correctAnswer
-        })
-        .from(exerciseQuestions)
-        .where(
-          inArray(
-            exerciseQuestions.exerciseId,
-            exercisesResult.map((ex) => ex.id)
-          )
-        )
-
-      const optionsResult = await db
-        .select({
-          id: exerciseOptions.id,
-          questionId: exerciseOptions.questionId,
-          optionText: exerciseOptions.optionText,
-          isCorrect: exerciseOptions.isCorrect
-        })
-        .from(exerciseOptions)
-        .where(
-          inArray(
-            exerciseOptions.questionId,
-            questionsResult.map((q) => q.id)
-          )
-        )
-
       // Organiser les résultats par direction
-      type DirectionType = 'de_to_fr' | 'fr_to_de'
-      const exercisesByDirection: Record<
-        DirectionType,
-        Array<{
-          exercise: (typeof exercisesResult)[0] | undefined
-          question: (typeof questionsResult)[0] & { options: typeof optionsResult }
-        }>
-      > = {
+      const exercisesByDirection: Record<string, any[]> = {
         de_to_fr: [],
         fr_to_de: []
       }
 
-      questionsResult.forEach((question) => {
-        const options = optionsResult.filter((opt) => opt.questionId === question.id)
-        const exercise = exercisesResult.find((ex) => ex.id === question.exerciseId)
-
-        exercisesByDirection[question.direction as DirectionType].push({
-          exercise,
-          question: {
-            ...question,
-            options
+      // Grouper les options par question
+      const optionsByQuestion = new Map()
+      exercisesData.forEach(row => {
+        if (row.option && row.question) {
+          if (!optionsByQuestion.has(row.question.id)) {
+            optionsByQuestion.set(row.question.id, [])
           }
-        })
+          optionsByQuestion.get(row.question.id).push({
+            id: row.option.id,
+            optionText: row.option.optionText,
+            isCorrect: row.option.isCorrect
+          })
+        }
+      })
+
+      // Traiter les résultats
+      const processedExercises = new Set()
+      exercisesData.forEach(row => {
+        if (!row.exercise || !row.question || !row.wordEntry || !row.wordSegment) return
+
+        const direction = row.question.direction
+        if (!processedExercises.has(row.exercise.id)) {
+          exercisesByDirection[direction].push({
+            exercise: {
+              id: row.exercise.id,
+              type: row.exercise.type,
+              level: row.exercise.level
+            },
+            word: {
+              word: row.wordEntry.word,
+              translations: row.wordEntry.translations
+            },
+            question: {
+              id: row.question.id,
+              direction: row.question.direction,
+              questionDe: row.question.questionDe,
+              questionFr: row.question.questionFr,
+              wordToTranslate: row.question.wordToTranslate,
+              correctAnswer: row.question.correctAnswer,
+              options: optionsByQuestion.get(row.question.id) || []
+            },
+            segment: {
+              id: row.wordSegment.id,
+              word: row.wordSegment.word,
+              text: row.audioSegment.text
+            }
+          })
+          processedExercises.add(row.exercise.id)
+        }
       })
 
       return c.json(exercisesByDirection)
