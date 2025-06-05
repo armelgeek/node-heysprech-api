@@ -3,7 +3,6 @@ import { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntr
 import { roles, userRoles } from './schema'
 
 export * from './schema'
-export * from './exercise.schema'
 export * from './video.schema'
 
 export const userRolesRelations = relations(userRoles, ({ one }) => ({
