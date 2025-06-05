@@ -261,7 +261,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     }
 
     return Array.from(videoMap.values()).map((videoData) => {
-      const vocabulary = Array.from(videoData.vocabulary.entries() as [any, any][])
+      const vocabulary = Array.from(videoData.vocabulary.entries() as [string, any][])
         .map(([word, data]) => ({
           word,
           occurrences: data.occurrences,
@@ -269,11 +269,15 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
             data.occurrences.reduce((acc: number, curr: { confidenceScore: number }) => acc + curr.confidenceScore, 0) /
             data.occurrences.length,
           metadata: data.metadata,
-          translations: data.translations,
-          examples: data.examples,
+          translations: Array.isArray(data.translations) ? data.translations : [],
+          examples: Array.isArray(data.examples) ? data.examples : [],
           level: data.level,
-          exercises: data.exercises,
-          pronunciations: data.pronunciations
+          exercises: ExerciseDataSchema.parse(data.exercises),
+          pronunciations: (data.pronunciations || []).map((p: any) => ({
+            file: p.filePath,
+            type: p.type,
+            language: p.language
+          }))
         }))
         .sort((a, b) => b.confidenceScoreAvg - a.confidenceScoreAvg)
 
@@ -525,7 +529,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     })
   }
 
-  async insertPronunciations(pronunciationData: any[], word: string): Promise<void> {
+  async insertPronunciations(pronunciationData: z.infer<typeof PronunciationSchema>[], word: string): Promise<void> {
     await db.transaction(async (tx) => {
       // Trouver l'ID du mot
       const [wordEntry] = await tx
