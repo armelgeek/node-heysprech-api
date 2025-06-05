@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { VideoModel, type Video } from '@/domain/models/video.model'
 import { ExerciseDataSchema, PronunciationSchema } from '@/domain/types/exercise.types'
-import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
+import type { VideoRepositoryInterface, VideoSegment } from '@/domain/repositories/video.repository.interface'
 import { db } from '../database/db'
 import {
   exerciseOptions,
@@ -16,17 +16,27 @@ import { audioSegments, processingLogs, videos, wordSegments } from '../database
 import { BaseRepository } from './base.repository'
 import type { PgTransaction } from 'drizzle-orm/pg-core'
 
-interface TranscriptionSegment {
-  start: number
-  end: number
+interface ExerciseOption {
+  id: number
   text: string
-  translation?: string
-  words?: Array<{
-    word: string
-    start: number
-    end: number
-    score: number
-  }>
+  isCorrect: boolean
+}
+
+interface ExerciseQuestion {
+  id: number
+  direction: 'de_to_fr' | 'fr_to_de'
+  questionDe: string
+  questionFr: string
+  wordToTranslate: string
+  correctAnswer: string
+  options: ExerciseOption[]
+}
+
+interface Exercise {
+  id: number
+  type: string
+  level: string
+  questions: ExerciseQuestion[]
 }
 
 export class VideoRepository extends BaseRepository<typeof videos> implements VideoRepositoryInterface {
@@ -116,11 +126,21 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       .select({
         video: videos,
         segments: audioSegments,
-        words: wordSegments
+        words: wordSegments,
+        wordEntry: wordEntries,
+        exercise: exercises,
+        exerciseQuestion: exerciseQuestions,
+        exerciseOption: exerciseOptions,
+        pronunciation: pronunciations
       })
       .from(videos)
       .leftJoin(audioSegments, eq(videos.id, audioSegments.videoId))
       .leftJoin(wordSegments, eq(audioSegments.id, wordSegments.audioSegmentId))
+      .leftJoin(wordEntries, eq(wordSegments.word, wordEntries.word))
+      .leftJoin(exercises, eq(wordEntries.id, exercises.wordId))
+      .leftJoin(exerciseQuestions, eq(exercises.id, exerciseQuestions.exerciseId))
+      .leftJoin(exerciseOptions, eq(exerciseQuestions.id, exerciseQuestions.id))
+      .leftJoin(pronunciations, eq(wordEntries.id, pronunciations.wordId))
       .orderBy(sql`${videos.createdAt} DESC`)
       .limit(limit)
 
@@ -142,7 +162,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       if (row.segments && !videoData.segments.some((s: { id: number }) => s.id === row.segments!.id)) {
         videoData.segments.push({
           id: row.segments.id,
-          startTime: row.segments.startTime / 1000, // Convertir en secondes
+          startTime: row.segments.startTime / 1000,
           endTime: row.segments.endTime / 1000,
           text: row.segments.text,
           translation: row.segments.translation,
@@ -169,33 +189,97 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
         if (!videoData.vocabulary.has(row.words.word)) {
           videoData.vocabulary.set(row.words.word, {
             occurrences: [],
-            confidenceScoreAvg: 0
+            confidenceScoreAvg: 0,
+            metadata: row.wordEntry?.metadata ?? null,
+            translations: row.wordEntry?.translations ?? [],
+            examples: row.wordEntry?.examples ?? [],
+            level: row.wordEntry?.level ?? 'intermediate',
+            exercises: [],
+            pronunciations: []
           })
         }
+
         const wordData = videoData.vocabulary.get(row.words.word)
+
+        // Ajouter l'occurrence
         wordData.occurrences.push({
           segmentId: row.words.audioSegmentId,
           startTime: row.words.startTime / 1000,
           endTime: row.words.endTime / 1000,
           confidenceScore: row.words.confidenceScore / 1000
         })
+
+        // Ajouter l'exercice s'il n'existe pas déjà et qu'il existe
+        if (row.exercise?.id && !wordData.exercises.some((ex: { id: number }) => ex.id === row.exercise!.id)) {
+          const exercise: Exercise = {
+            id: row.exercise.id,
+            type: row.exercise.type,
+            level: row.exercise.level,
+            questions: []
+          }
+
+          // Ajouter la question si elle existe
+          if (row.exerciseQuestion?.id) {
+            const question: ExerciseQuestion = {
+              id: row.exerciseQuestion.id,
+              direction: row.exerciseQuestion.direction as 'de_to_fr' | 'fr_to_de',
+              questionDe: row.exerciseQuestion.questionDe,
+              questionFr: row.exerciseQuestion.questionFr,
+              wordToTranslate: row.exerciseQuestion.wordToTranslate,
+              correctAnswer: row.exerciseQuestion.correctAnswer,
+              options: []
+            }
+
+            // Ajouter l'option si elle existe
+            if (row.exerciseOption?.id) {
+              question.options.push({
+                id: row.exerciseOption.id,
+                text: row.exerciseOption.optionText,
+                isCorrect: row.exerciseOption.isCorrect
+              })
+            }
+
+            exercise.questions.push(question)
+          }
+
+          wordData.exercises.push(exercise)
+        }
+
+        // Ajouter la prononciation si elle n'existe pas déjà et qu'elle existe
+        if (
+          row.pronunciation?.id &&
+          !wordData.pronunciations.some((p: { id: number }) => p.id === row.pronunciation!.id)
+        ) {
+          wordData.pronunciations.push({
+            id: row.pronunciation.id,
+            filePath: row.pronunciation.filePath,
+            type: row.pronunciation.type,
+            language: row.pronunciation.language
+          })
+        }
       }
     }
 
     return Array.from(videoMap.values()).map((videoData) => {
-      const vocabulary = Array.from(videoData.vocabulary.entries() as [string, { occurrences: any[] }][]).map(
-        ([word, data]) => ({
+      const vocabulary = Array.from(videoData.vocabulary.entries() as [any, any][])
+        .map(([word, data]) => ({
           word,
           occurrences: data.occurrences,
           confidenceScoreAvg:
-            data.occurrences.reduce((acc: any, curr: { confidenceScore: any }) => acc + curr.confidenceScore, 0) /
-            data.occurrences.length
-        })
-      )
+            data.occurrences.reduce((acc: number, curr: { confidenceScore: number }) => acc + curr.confidenceScore, 0) /
+            data.occurrences.length,
+          metadata: data.metadata,
+          translations: data.translations,
+          examples: data.examples,
+          level: data.level,
+          exercises: data.exercises,
+          pronunciations: data.pronunciations
+        }))
+        .sort((a, b) => b.confidenceScoreAvg - a.confidenceScoreAvg)
 
       return new VideoModel({
         ...videoData,
-        vocabulary: vocabulary.sort((a, b) => b.confidenceScoreAvg - a.confidenceScoreAvg)
+        vocabulary
       })
     })
   }
@@ -204,7 +288,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     await db.delete(videos).where(eq(videos.id, id))
   }
 
-  async insertAudioSegments(segments: TranscriptionSegment[], videoId: number, language: string): Promise<number[]> {
+  async insertAudioSegments(segments: VideoSegment[], videoId: number, language: string): Promise<number[]> {
     const audioSegmentIds: number[] = []
 
     await db.transaction(async (tx) => {
@@ -213,8 +297,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
           .insert(audioSegments)
           .values({
             videoId,
-            startTime: this.validateTime(segment.start),
-            endTime: this.validateTime(segment.end),
+            startTime: this.validateTime(segment.startTime),
+            endTime: this.validateTime(segment.endTime),
             text: segment.text || '',
             language,
             translation: segment.translation
@@ -228,9 +312,9 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
           const wordValues = segment.words.map((word, index) => ({
             audioSegmentId,
             word: word.word || '',
-            startTime: this.validateTime(word.start),
-            endTime: this.validateTime(word.end),
-            confidenceScore: this.validateScore(word.score),
+            startTime: this.validateTime(word.startTime),
+            endTime: this.validateTime(word.endTime),
+            confidenceScore: this.validateScore(word.confidenceScore),
             positionInSegment: index + 1
           }))
 
@@ -424,7 +508,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     }
   }
 
-  async insertExercises(exercises: any[], word: string): Promise<void> {
+  async insertExercises(exercises: z.infer<typeof ExerciseDataSchema>[], word: string): Promise<void> {
     await db.transaction(async (tx) => {
       // Trouver l'ID du mot
       const [wordEntry] = await tx

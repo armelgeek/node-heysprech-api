@@ -26,11 +26,52 @@ export const PronunciationSchema = z.object({
   language: z.string()
 })
 
-// Complete vocabulary item schema
-export const VocabularyItemSchema = z.object({
-  word: z.string(),
-  exercises: ExerciseDataSchema.optional(),
-  pronunciations: z.array(PronunciationSchema).optional()
+// Schema for vocabulary item data
+export const VocabularyEntrySchema = z.object({
+  occurrences: z.array(
+    z.object({
+      segmentId: z.number(),
+      startTime: z.number(),
+      endTime: z.number(),
+      confidenceScore: z.number()
+    })
+  ),
+  metadata: z.any(),
+  translations: z.array(z.string()),
+  examples: z.array(z.string()),
+  level: z.string(),
+  exercises: z.array(
+    z.object({
+      id: z.number(),
+      type: z.string(),
+      level: z.string(),
+      questions: z.array(
+        z.object({
+          id: z.number(),
+          direction: z.enum(['de_to_fr', 'fr_to_de']),
+          questionDe: z.string(),
+          questionFr: z.string(),
+          wordToTranslate: z.string(),
+          correctAnswer: z.string(),
+          options: z.array(
+            z.object({
+              id: z.number(),
+              optionText: z.string(),
+              isCorrect: z.boolean()
+            })
+          )
+        })
+      )
+    })
+  ),
+  pronunciations: z.array(
+    z.object({
+      id: z.number(),
+      filePath: z.string(),
+      type: z.string(),
+      language: z.string()
+    })
+  )
 })
 
 export type ExerciseQuestion = z.infer<typeof ExerciseQuestionSchema>
@@ -40,3 +81,4 @@ export type PronunciationData = {
   type: string
   language: string
 }
+export type VocabularyEntry = z.infer<typeof VocabularyEntrySchema>

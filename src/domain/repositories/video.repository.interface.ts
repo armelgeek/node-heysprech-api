@@ -1,4 +1,19 @@
 import type { Video, VideoModel } from '@/domain/models/video.model'
+import type { ExerciseData, PronunciationData } from '@/domain/types/exercise.types'
+
+export interface VideoSegment {
+  startTime: number
+  endTime: number
+  text: string
+  translation?: string
+  language: string
+  words: Array<{
+    word: string
+    startTime: number
+    endTime: number
+    confidenceScore: number
+  }>
+}
 
 export interface VideoRepositoryInterface {
   insertVideo: (videoData: Omit<Video, 'id'>) => Promise<number>
@@ -20,7 +35,7 @@ export interface VideoRepositoryInterface {
   getVideoById: (id: number) => Promise<VideoModel | null>
   getRecentVideos: (limit?: number) => Promise<VideoModel[]>
   deleteVideo: (id: number) => Promise<void>
-  insertAudioSegments: (segments: any[], videoId: number, language: string) => Promise<number[]>
+  insertAudioSegments: (segments: VideoSegment[], videoId: number, language: string) => Promise<number[]>
   loadTranscriptionData: (
     videoId: number,
     transcriptionFile: string
@@ -29,6 +44,6 @@ export interface VideoRepositoryInterface {
     vocabulary: number
     language: string
   }>
-  insertExercises: (exercises: any[], word: string) => Promise<void>
-  insertPronunciations: (pronunciations: any[], word: string) => Promise<void>
+  insertExercises: (exercises: ExerciseData[], word: string) => Promise<void>
+  insertPronunciations: (pronunciations: PronunciationData[], word: string) => Promise<void>
 }
