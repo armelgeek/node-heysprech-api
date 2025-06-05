@@ -896,7 +896,7 @@ export class VideoController implements Routes {
           exercise: (typeof exercisesResult)[0] | undefined
           question: (typeof questionsResult)[0] & { options: typeof optionsResult }
         }>
-      = {
+      > = {
         de_to_fr: [],
         fr_to_de: []
       }
