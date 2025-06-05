@@ -304,12 +304,9 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   private transformToVideoModels(videoMap: Map<number, any>): VideoModel[] {
     return Array.from(videoMap.values()).map((videoData) => {
       const vocabulary = Array.from(videoData.vocabulary.entries() as [string, any][])
-        .map(([word, data]) => ({
-          word,
-          occurrences: data.occurrences,
-          confidenceScoreAvg: this.calculateConfidenceScore(data.occurrences),
-          metadata: data.metadata,
-          translations:
+        .map(([word, data]) => {
+          // Transform translations from array to object
+          const translations =
             data.translations && Array.isArray(data.translations)
               ? data.translations.reduce((obj: Record<string, string>, trans: any) => {
                   if (trans.language && trans.text) {
@@ -317,16 +314,61 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
                   }
                   return obj
                 }, {})
-              : {},
-          examples: Array.isArray(data.examples) ? data.examples : [],
-          level: data.level,
-          exercises: data.exercises.length > 0 ? data.exercises[0] : null,
-          pronunciations: (data.pronunciations || []).map((p: any) => ({
-            file: p.filePath,
-            type: p.type,
-            language: p.language
-          }))
-        }))
+              : {}
+
+          // Transform exercise to match ExerciseDataSchema
+          const exercise = data.exercises?.[0]
+          const deToFrQuestion = exercise?.questions.find((q: { direction: string }) => q.direction === 'de_to_fr')
+          const frToDeQuestion = exercise?.questions.find((q: { direction: string }) => q.direction === 'fr_to_de')
+
+          const transformedExercise = exercise
+            ? {
+                type: 'multiple_choice_pair' as const,
+                level: exercise.level as 'beginner' | 'intermediate' | 'advanced',
+                de_to_fr: deToFrQuestion
+                  ? {
+                      question: {
+                        de: deToFrQuestion.questionDe,
+                        fr: deToFrQuestion.questionFr
+                      },
+                      word_to_translate: deToFrQuestion.wordToTranslate,
+                      correct_answer: deToFrQuestion.correctAnswer,
+                      options: deToFrQuestion.options.map((opt: { text: string }) => opt.text)
+                    }
+                  : null,
+                fr_to_de: frToDeQuestion
+                  ? {
+                      question: {
+                        de: frToDeQuestion.questionDe,
+                        fr: frToDeQuestion.questionFr
+                      },
+                      word_to_translate: frToDeQuestion.wordToTranslate,
+                      correct_answer: frToDeQuestion.correctAnswer,
+                      options: frToDeQuestion.options.map((opt: { text: string }) => opt.text)
+                    }
+                  : null
+              }
+            : null
+
+          return {
+            word,
+            occurrences: data.occurrences,
+            confidenceScoreAvg: this.calculateConfidenceScore(data.occurrences),
+            metadata: data.metadata,
+            translations,
+            examples: Array.isArray(data.examples) ? data.examples : [],
+            level: data.level,
+            exercises:
+              transformedExercise && transformedExercise.de_to_fr && transformedExercise.fr_to_de
+                ? transformedExercise
+                : null,
+            pronunciations: (data.pronunciations || []).map((p: any) => ({
+              file: p.filePath,
+              type: p.type,
+              language: p.language
+            }))
+          }
+        })
         .sort((a, b) => b.confidenceScoreAvg - a.confidenceScoreAvg)
 
       return new VideoModel({
