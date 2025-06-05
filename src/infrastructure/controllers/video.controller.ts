@@ -363,7 +363,7 @@ export class VideoController implements Routes {
     this.controller.openapi(
       createRoute({
         method: 'delete',
-        path: '/videos/{id}',
+        path: '/videos/info/{id}',
         tags: ['Videos'],
         summary: 'Delete Video',
         description: 'Delete a video and its associated files',
