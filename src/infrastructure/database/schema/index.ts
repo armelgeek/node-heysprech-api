@@ -1,7 +1,10 @@
-import { relations, type InferModel } from 'drizzle-orm'
+import { relations } from 'drizzle-orm'
+import { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries } from './exercise.schema'
 import { roles, userRoles } from './schema'
 
 export * from './schema'
+export * from './exercise.schema'
+export * from './video.schema'
 
 export const userRolesRelations = relations(userRoles, ({ one }) => ({
   user: one(roles, {
@@ -14,6 +17,4 @@ export const userRolesRelations = relations(userRoles, ({ one }) => ({
   })
 }))
 
-export * from './video.schema'
-export type Role = InferModel<typeof roles>
-export type UserRole = InferModel<typeof userRoles>
+export { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries }

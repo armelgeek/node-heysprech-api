@@ -276,14 +276,45 @@ export class ProcessingQueue {
     }
 
     // Charger les données de transcription dans la base de données
-    console.info(`📥 [Video ${videoId}] Phase 1/3: Début de l'importation des données...`)
+    console.info(`📥 [Video ${videoId}] Phase 1/5: Début de l'importation des données...`)
     await this.videoRepository.logProcessingStep(videoId, 'database_import', 'started')
 
     try {
-      console.info(`📝 [Video ${videoId}] Phase 2/3: Lecture et analyse du fichier: ${result.outputPath}`)
+      console.info(`📝 [Video ${videoId}] Phase 2/5: Lecture et analyse du fichier: ${result.outputPath}`)
+      const fileContent = await fs.readFile(result.outputPath, 'utf8')
+      const jsonData = JSON.parse(fileContent)
+
+      // Phase 3: Importation des segments et transcriptions
+      console.info(`🔤 [Video ${videoId}] Phase 3/5: Importation des segments et transcriptions...`)
       const transcriptionStats = await this.videoRepository.loadTranscriptionData(videoId, result.outputPath)
 
-      console.info(`📝 [Video ${videoId}] Phase 3/3: Mise à jour du statut et nettoyage...`)
+      // Phase 4: Traitement des exercices
+      console.info(`📚 [Video ${videoId}] Phase 4/5: Traitement des exercices...`)
+      if (jsonData.vocabulary) {
+        await this.videoRepository.logProcessingStep(videoId, 'exercises', 'started')
+        for (const word of jsonData.vocabulary) {
+          if (word.exercises) {
+            console.info(`✍️ [Video ${videoId}] Création des exercices pour le mot: ${word.word}`)
+            await this.videoRepository.insertExercises(word.exercises, word.word)
+          }
+        }
+        await this.videoRepository.logProcessingStep(videoId, 'exercises', 'completed')
+      }
+
+      // Phase 5: Traitement des prononciations
+      console.info(`🔊 [Video ${videoId}] Phase 5/5: Traitement des prononciations...`)
+      if (jsonData.vocabulary) {
+        await this.videoRepository.logProcessingStep(videoId, 'pronunciations', 'started')
+        for (const word of jsonData.vocabulary) {
+          if (word.pronunciations) {
+            console.info(`🎵 [Video ${videoId}] Enregistrement des prononciations pour le mot: ${word.word}`)
+            await this.videoRepository.insertPronunciations(word.pronunciations, word.word)
+          }
+        }
+        await this.videoRepository.logProcessingStep(videoId, 'pronunciations', 'completed')
+      }
+
+      console.info(`✅ [Video ${videoId}] Toutes les phases de traitement sont terminées.`)
 
       // Mettre à jour le statut avec le chemin du fichier
       await this.videoRepository.updateVideoStatus(videoId, 'completed', {

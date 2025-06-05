@@ -1,9 +1,17 @@
 import { promises as fs } from 'node:fs'
 import { eq, sql } from 'drizzle-orm'
+import { z } from 'zod'
 import { VideoModel, type Video } from '@/domain/models/video.model'
+import { ExerciseDataSchema, PronunciationSchema } from '@/domain/types/exercise.types'
 import type { VideoRepositoryInterface } from '@/domain/repositories/video.repository.interface'
 import { db } from '../database/db'
-import { exerciseOptions, exerciseQuestions, exercises, wordEntries } from '../database/schema'
+import {
+  exerciseOptions,
+  exerciseQuestions,
+  exercises,
+  pronunciations,
+  wordEntries
+} from '../database/schema/exercise.schema'
 import { audioSegments, processingLogs, videos, wordSegments } from '../database/schema/video.schema'
 import { BaseRepository } from './base.repository'
 import type { PgTransaction } from 'drizzle-orm/pg-core'
@@ -289,7 +297,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
             // Traitement des prononciations
             if (Array.isArray(word.pronunciations)) {
               console.info(`🔊 [Video ${videoId}] Ajout des prononciations pour le mot ${word.word}...`)
-              const pronunciationValues = word.pronunciations.map((p: { file: any; type: any; language: any }) => ({
+              const validatedPronunciations = word.pronunciations.map((p: unknown) => PronunciationSchema.parse(p))
+              const pronunciationValues = validatedPronunciations.map((p: { file: any; type: any; language: any }) => ({
                 wordId: wordEntry.id,
                 filePath: p.file,
                 type: p.type,
@@ -317,67 +326,82 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
 
       return result
     } catch (error) {
-      throw new Error(`Erreur lors du chargement de la transcription: ${(error as Error).message}`)
+      throw new TypeError(`Erreur lors du chargement de la transcription: ${(error as Error).message}`)
     }
   }
 
-  private async insertExercises(tx: PgTransaction<any, any, any>, exercisesData: any, wordId: number): Promise<void> {
-    if (exercisesData.type === 'multiple_choice_pair') {
+  private async insertExercises(
+    tx: PgTransaction<any, any, any>,
+    exercisesData: unknown,
+    wordId: number
+  ): Promise<void> {
+    try {
+      const result = ExerciseDataSchema.safeParse(exercisesData)
+      if (!result.success) {
+        throw new TypeError(`Données d'exercice invalides: ${result.error.message}`)
+      }
+      const validatedData = result.data
+
       // Créer l'exercice
       const [exercise] = await tx
         .insert(exercises)
         .values({
           wordId,
-          type: exercisesData.type,
-          level: exercisesData.level || 'intermediate'
+          type: validatedData.type,
+          level: validatedData.level
         })
         .returning({ id: exercises.id })
 
       // Traitement des questions DE -> FR
-      if (exercisesData.de_to_fr) {
+      if (validatedData.de_to_fr) {
         const [question] = await tx
           .insert(exerciseQuestions)
           .values({
             exerciseId: exercise.id,
             direction: 'de_to_fr',
-            questionDe: exercisesData.de_to_fr.question.de,
-            questionFr: exercisesData.de_to_fr.question.fr,
-            wordToTranslate: exercisesData.de_to_fr.word_to_translate,
-            correctAnswer: exercisesData.de_to_fr.correct_answer
+            questionDe: validatedData.de_to_fr.question.de,
+            questionFr: validatedData.de_to_fr.question.fr,
+            wordToTranslate: validatedData.de_to_fr.word_to_translate,
+            correctAnswer: validatedData.de_to_fr.correct_answer
           })
           .returning({ id: exerciseQuestions.id })
 
         // Ajout des options
-        const options = exercisesData.de_to_fr.options.map((option) => ({
+        const options = validatedData.de_to_fr.options.map((option) => ({
           questionId: question.id,
           optionText: option,
-          isCorrect: option === exercisesData.de_to_fr.correct_answer
+          isCorrect: option === validatedData.de_to_fr.correct_answer
         }))
         await tx.insert(exerciseOptions).values(options)
       }
 
       // Traitement des questions FR -> DE
-      if (exercisesData.fr_to_de) {
+      if (validatedData.fr_to_de) {
         const [question] = await tx
           .insert(exerciseQuestions)
           .values({
             exerciseId: exercise.id,
             direction: 'fr_to_de',
-            questionDe: exercisesData.fr_to_de.question.de,
-            questionFr: exercisesData.fr_to_de.question.fr,
-            wordToTranslate: exercisesData.fr_to_de.word_to_translate,
-            correctAnswer: exercisesData.fr_to_de.correct_answer
+            questionDe: validatedData.fr_to_de.question.de,
+            questionFr: validatedData.fr_to_de.question.fr,
+            wordToTranslate: validatedData.fr_to_de.word_to_translate,
+            correctAnswer: validatedData.fr_to_de.correct_answer
           })
           .returning({ id: exerciseQuestions.id })
 
         // Ajout des options
-        const options = exercisesData.fr_to_de.options.map((option) => ({
+        const options = validatedData.fr_to_de.options.map((option) => ({
           questionId: question.id,
           optionText: option,
-          isCorrect: option === exercisesData.fr_to_de.correct_answer
+          isCorrect: option === validatedData.fr_to_de.correct_answer
         }))
         await tx.insert(exerciseOptions).values(options)
       }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new TypeError(`Données d'exercice invalides: ${error.message}`)
+      }
+      throw error
     }
   }
 
