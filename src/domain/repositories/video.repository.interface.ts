@@ -2,15 +2,15 @@ import type { Video, VideoModel } from '@/domain/models/video.model'
 import type { ExerciseData, PronunciationData } from '@/domain/types/exercise.types'
 
 export interface VideoSegment {
-  startTime: number
-  endTime: number
+  start: number
+  end: number
   text: string
   translation?: string
   language: string
   words: Array<{
     word: string
-    startTime: number
-    endTime: number
+    start: number
+    end: number
     confidenceScore: number
   }>
 }

@@ -188,8 +188,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     if (!videoData.segments.some((s: { id: number }) => s.id === segment.id)) {
       videoData.segments.push({
         id: segment.id,
-        startTime: segment.startTime / 1000,
-        endTime: segment.endTime / 1000,
+        startTime: segment.start,
+        endTime: segment.end,
         text: segment.text,
         translation: segment.translation,
         language: segment.language,
@@ -219,8 +219,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   private createWordData(word: any) {
     return {
       word: word.word,
-      startTime: word.startTime / 1000,
-      endTime: word.endTime / 1000,
+      startTime: word.start,
+      endTime: word.end / 1000,
       confidenceScore: word.confidenceScore / 1000
     }
   }
@@ -242,8 +242,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     // Ajouter l'occurrence
     wordData.occurrences.push({
       segmentId: words.audioSegmentId,
-      startTime: words.startTime / 1000,
-      endTime: words.endTime / 1000,
+      startTime: words.start,
+      endTime: words.end,
       confidenceScore: words.confidenceScore / 1000
     })
 
@@ -421,8 +421,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
           .insert(audioSegments)
           .values({
             videoId,
-            startTime: this.validateTime(segment.startTime),
-            endTime: this.validateTime(segment.endTime),
+            startTime: this.validateTime(segment.start),
+            endTime: this.validateTime(segment.end),
             text: segment.text || '',
             language,
             translation: segment.translation
@@ -436,8 +436,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
           const wordValues = segment.words.map((word, index) => ({
             audioSegmentId,
             word: word.word || '',
-            startTime: this.validateTime(word.startTime),
-            endTime: this.validateTime(word.endTime),
+            startTime: this.validateTime(word.start),
+            endTime: this.validateTime(word.end),
             confidenceScore: this.validateScore(word.confidenceScore),
             positionInSegment: index + 1
           }))
