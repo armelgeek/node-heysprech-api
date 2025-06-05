@@ -337,8 +337,26 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   ): Promise<void> {
     try {
       // If exercisesData is a string, try parsing it as JSON first
-      const dataToValidate = typeof exercisesData === 'string' ? JSON.parse(exercisesData) : exercisesData;
+      const rawData = typeof exercisesData === 'string' ? JSON.parse(exercisesData) : exercisesData;
       
+      // Clean up the data structure to match our schema
+      const dataToValidate = {
+        type: rawData.type,
+        level: rawData.level,
+        de_to_fr: {
+          question: rawData.de_to_fr.question,
+          word_to_translate: rawData.de_to_fr.word_to_translate,
+          correct_answer: rawData.de_to_fr.correct_answer,
+          options: rawData.de_to_fr.options
+        },
+        fr_to_de: {
+          question: rawData.fr_to_de.question,
+          word_to_translate: rawData.fr_to_de.word_to_translate,
+          correct_answer: rawData.fr_to_de.correct_answer,
+          options: rawData.fr_to_de.options
+        }
+      };
+
       const result = ExerciseDataSchema.safeParse(dataToValidate)
       if (!result.success) {
         throw new TypeError(`Données d'exercice invalides: ${result.error.message}`)
