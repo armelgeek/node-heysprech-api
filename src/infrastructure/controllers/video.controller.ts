@@ -575,8 +575,8 @@ export class VideoController implements Routes {
           }
         })
         .from(videos)
-        .leftJoin(audioSegments, eq(audioSegments.videoId, videos.id))
-        .leftJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
+        .innerJoin(audioSegments, eq(audioSegments.videoId, videos.id))
+        .innerJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
 
       // Restructurer les résultats pour grouper les segments par vidéo
       const videosMap = new Map()
@@ -605,6 +605,8 @@ export class VideoController implements Routes {
             const audioSegment = video.audioSegments.find((segment: any) => segment.id === row.audioSegment?.id)
             if (audioSegment && !audioSegment.wordSegments.some((ws: any) => ws.id === row.wordSegment?.id)) {
               audioSegment.wordSegments.push(row.wordSegment)
+              // Trier les word segments par leur position dans le segment
+              audioSegment.wordSegments.sort((a: any, b: any) => a.positionInSegment - b.positionInSegment)
             }
           }
         }
