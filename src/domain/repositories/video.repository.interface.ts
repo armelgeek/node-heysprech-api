@@ -29,4 +29,6 @@ export interface VideoRepositoryInterface {
     vocabulary: number
     language: string
   }>
+  insertExercises: (exercises: any[], word: string) => Promise<void>
+  insertPronunciations: (pronunciations: any[], word: string) => Promise<void>
 }

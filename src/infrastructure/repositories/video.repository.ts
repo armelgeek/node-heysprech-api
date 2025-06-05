@@ -330,34 +330,13 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     }
   }
 
-  private async insertExercises(
+  private async insertExercisesTx(
     tx: PgTransaction<any, any, any>,
     exercisesData: unknown,
     wordId: number
   ): Promise<void> {
     try {
-      // If exercisesData is a string, try parsing it as JSON first
-      const rawData = typeof exercisesData === 'string' ? JSON.parse(exercisesData) : exercisesData;
-      
-      // Clean up the data structure to match our schema
-      const dataToValidate = {
-        type: rawData.type,
-        level: rawData.level,
-        de_to_fr: {
-          question: rawData.de_to_fr.question,
-          word_to_translate: rawData.de_to_fr.word_to_translate,
-          correct_answer: rawData.de_to_fr.correct_answer,
-          options: rawData.de_to_fr.options
-        },
-        fr_to_de: {
-          question: rawData.fr_to_de.question,
-          word_to_translate: rawData.fr_to_de.word_to_translate,
-          correct_answer: rawData.fr_to_de.correct_answer,
-          options: rawData.fr_to_de.options
-        }
-      };
-
-      const result = ExerciseDataSchema.safeParse(dataToValidate)
+      const result = ExerciseDataSchema.safeParse(exercisesData)
       if (!result.success) {
         throw new TypeError(`Données d'exercice invalides: ${result.error.message}`)
       }
@@ -443,5 +422,47 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       updatedAt: dbVideo.updatedAt || undefined,
       processedAt: dbVideo.processedAt || undefined
     }
+  }
+
+  async insertExercises(exercises: any[], word: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Trouver l'ID du mot
+      const [wordEntry] = await tx
+        .select({ id: wordEntries.id })
+        .from(wordEntries)
+        .where(eq(wordEntries.word, word))
+        .limit(1)
+
+      if (!wordEntry) {
+        throw new Error(`Word not found: ${word}`)
+      }
+
+      await this.insertExercisesTx(tx, exercises, wordEntry.id)
+    })
+  }
+
+  async insertPronunciations(pronunciationData: any[], word: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Trouver l'ID du mot
+      const [wordEntry] = await tx
+        .select({ id: wordEntries.id })
+        .from(wordEntries)
+        .where(eq(wordEntries.word, word))
+        .limit(1)
+
+      if (!wordEntry) {
+        throw new Error(`Word not found: ${word}`)
+      }
+
+      const validatedPronunciations = pronunciationData.map((p) => PronunciationSchema.parse(p))
+      const pronunciationValues = validatedPronunciations.map((p) => ({
+        wordId: wordEntry.id,
+        filePath: p.file,
+        type: p.type,
+        language: p.language
+      }))
+
+      await tx.insert(pronunciations).values(pronunciationValues)
+    })
   }
 }
