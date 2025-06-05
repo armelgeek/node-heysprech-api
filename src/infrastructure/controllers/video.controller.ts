@@ -577,6 +577,7 @@ export class VideoController implements Routes {
         .from(videos)
         .innerJoin(audioSegments, eq(audioSegments.videoId, videos.id))
         .innerJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
+        .orderBy(wordSegments.startTime, wordSegments.endTime)
 
       // Restructurer les résultats pour grouper les segments par vidéo
       const videosMap = new Map()
@@ -604,9 +605,19 @@ export class VideoController implements Routes {
           if (row.wordSegment) {
             const audioSegment = video.audioSegments.find((segment: any) => segment.id === row.audioSegment?.id)
             if (audioSegment && !audioSegment.wordSegments.some((ws: any) => ws.id === row.wordSegment?.id)) {
-              audioSegment.wordSegments.push(row.wordSegment)
-              // Trier les word segments par leur position dans le segment
-              audioSegment.wordSegments.sort((a: any, b: any) => a.positionInSegment - b.positionInSegment)
+              let inserted = false
+              // Insérer le word segment à la bonne position
+              for (let i = 0; i < audioSegment.wordSegments.length; i++) {
+                if (audioSegment.wordSegments[i].positionInSegment > row.wordSegment.positionInSegment) {
+                  audioSegment.wordSegments.splice(i, 0, row.wordSegment)
+                  inserted = true
+                  break
+                }
+              }
+              // Si on n'a pas inséré le segment (c'est qu'il va à la fin)
+              if (!inserted) {
+                audioSegment.wordSegments.push(row.wordSegment)
+              }
             }
           }
         }
