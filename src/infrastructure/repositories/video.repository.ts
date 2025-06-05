@@ -188,8 +188,8 @@ private validateTime(time: unknown): number {
     if (!videoData.segments.some((s: { id: number }) => s.id === segment.id)) {
       videoData.segments.push({
         id: segment.id,
-        startTime: segment.start,
-        endTime: segment.end,
+        startTime: segment.startTime,
+        endTime: segment.endTime,
         text: segment.text,
         translation: segment.translation,
         language: segment.language,
@@ -219,8 +219,8 @@ private validateTime(time: unknown): number {
   private createWordData(word: any) {
     return {
       word: word.word,
-      startTime: word.start,
-      endTime: word.end / 1000,
+      startTime: word.startTime,
+      endTime: word.endTime,
       confidenceScore: word.confidenceScore / 1000
     }
   }
