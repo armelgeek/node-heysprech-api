@@ -272,7 +272,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
           translations: Array.isArray(data.translations) ? data.translations : [],
           examples: Array.isArray(data.examples) ? data.examples : [],
           level: data.level,
-          exercises: ExerciseDataSchema.parse(data.exercises),
+          exercises: data.exercises.map((exercise: unknown) => ExerciseDataSchema.parse(exercise)),
           pronunciations: (data.pronunciations || []).map((p: any) => ({
             file: p.filePath,
             type: p.type,
