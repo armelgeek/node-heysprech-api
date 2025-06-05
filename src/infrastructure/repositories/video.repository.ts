@@ -336,7 +336,10 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     wordId: number
   ): Promise<void> {
     try {
-      const result = ExerciseDataSchema.safeParse(exercisesData)
+      // If exercisesData is a string, try parsing it as JSON first
+      const dataToValidate = typeof exercisesData === 'string' ? JSON.parse(exercisesData) : exercisesData;
+      
+      const result = ExerciseDataSchema.safeParse(dataToValidate)
       if (!result.success) {
         throw new TypeError(`Données d'exercice invalides: ${result.error.message}`)
       }

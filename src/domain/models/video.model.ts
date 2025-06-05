@@ -64,39 +64,6 @@ const VocabularyEntrySchema = z.object({
         language: z.string()
       })
     )
-    .optional(),
-  exercises: z
-    .object({
-      type: z.literal('multiple_choice_pair'),
-      level: z.enum(['beginner', 'intermediate', 'advanced']).default('intermediate'),
-      de_to_fr: z.object({
-        question: z.object({
-          de: z.string(),
-          fr: z.string()
-        }),
-        word_to_translate: z.string(),
-        correct_answer: z.string(),
-        options: z.array(z.string())
-      }),
-      fr_to_de: z.object({
-        question: z.object({
-          de: z.string(),
-          fr: z.string()
-        }),
-        word_to_translate: z.string(),
-        correct_answer: z.string(),
-        options: z.array(z.string())
-      })
-    })
-    .optional(),
-  pronunciations: z
-    .array(
-      z.object({
-        file: z.string(),
-        type: z.string(),
-        language: z.string()
-      })
-    )
     .optional()
 })
 
