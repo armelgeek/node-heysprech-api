@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { html } from 'hono/html'
 import { VideoService } from '@/application/services/video.service'
 import { db } from '../database/db'
@@ -510,23 +510,107 @@ export class VideoController implements Routes {
       }
     )
 
-    // Nouvel endpoint pour récupérer toutes les vidéos
+    // Récupérer toutes les vidéos avec leurs segments audio et word segments
     this.controller.get('/videos', async (c) => {
+      type VideoRow = {
+        video: {
+          id: number
+          title: string
+          originalFilename: string
+          filePath: string
+          fileSize: number
+          duration: number
+          language: string
+          transcriptionStatus: string
+          createdAt: Date
+          updatedAt: Date
+        }
+        audioSegment: {
+          id: number
+          startTime: number
+          endTime: number
+          text: string
+          translation: string | null
+          language: string
+        } | null
+        wordSegment: {
+          id: number
+          word: string
+          startTime: number
+          endTime: number
+          confidenceScore: number
+          positionInSegment: number
+        } | null
+      }
+
       const result = await db
         .select({
-          id: videos.id,
-          title: videos.title,
-          originalFilename: videos.originalFilename,
-          filePath: videos.filePath,
-          fileSize: videos.fileSize,
-          duration: videos.duration,
-          language: videos.language,
-          transcriptionStatus: videos.transcriptionStatus,
-          createdAt: videos.createdAt,
-          updatedAt: videos.updatedAt
+          video: {
+            id: videos.id,
+            title: videos.title,
+            originalFilename: videos.originalFilename,
+            filePath: videos.filePath,
+            fileSize: videos.fileSize,
+            duration: videos.duration,
+            language: videos.language,
+            transcriptionStatus: videos.transcriptionStatus,
+            createdAt: videos.createdAt,
+            updatedAt: videos.updatedAt
+          },
+          audioSegment: {
+            id: audioSegments.id,
+            startTime: audioSegments.startTime,
+            endTime: audioSegments.endTime,
+            text: audioSegments.text,
+            translation: audioSegments.translation,
+            language: audioSegments.language
+          },
+          wordSegment: {
+            id: wordSegments.id,
+            word: wordSegments.word,
+            startTime: wordSegments.startTime,
+            endTime: wordSegments.endTime,
+            confidenceScore: wordSegments.confidenceScore,
+            positionInSegment: wordSegments.positionInSegment
+          }
         })
         .from(videos)
-      return c.json(result)
+        .leftJoin(audioSegments, eq(audioSegments.videoId, videos.id))
+        .leftJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
+
+      // Restructurer les résultats pour grouper les segments par vidéo
+      const videosMap = new Map()
+
+      result.forEach((row) => {
+        if (!videosMap.has(row.video.id)) {
+          videosMap.set(row.video.id, {
+            ...row.video,
+            audioSegments: []
+          })
+        }
+
+        const video = videosMap.get(row.video.id)
+
+        if (row.audioSegment) {
+          const existingAudioSegment = video.audioSegments.find((segment: any) => segment.id === row.audioSegment?.id)
+
+          if (!existingAudioSegment) {
+            video.audioSegments.push({
+              ...row.audioSegment,
+              wordSegments: []
+            })
+          }
+
+          if (row.wordSegment) {
+            const audioSegment = video.audioSegments.find((segment: any) => segment.id === row.audioSegment?.id)
+            if (audioSegment && !audioSegment.wordSegments.some((ws: any) => ws.id === row.wordSegment?.id)) {
+              audioSegment.wordSegments.push(row.wordSegment)
+            }
+          }
+        }
+      })
+
+      return c.json(Array.from(videosMap.values()))
     })
 
     // Récupérer tous les segments audio
@@ -631,7 +715,7 @@ export class VideoController implements Routes {
         await db.delete(exercises)
         await db.delete(pronunciations)
         await db.delete(wordEntries)
-        
+
         // Supprimer les vidéos
         await db.delete(videos)
 
@@ -786,7 +870,7 @@ export class VideoController implements Routes {
           await db.delete(exercises)
           await db.delete(pronunciations)
           await db.delete(wordEntries)
-          
+
           // Supprimer enfin les vidéos
           await db.delete(videos)
 
@@ -867,7 +951,7 @@ export class VideoController implements Routes {
 
       // Grouper les options par question
       const optionsByQuestion = new Map()
-      exercisesData.forEach(row => {
+      exercisesData.forEach((row) => {
         if (row.option && row.question) {
           if (!optionsByQuestion.has(row.question.id)) {
             optionsByQuestion.set(row.question.id, [])
@@ -882,7 +966,7 @@ export class VideoController implements Routes {
 
       // Traiter les résultats
       const processedExercises = new Set()
-      exercisesData.forEach(row => {
+      exercisesData.forEach((row) => {
         if (!row.exercise || !row.question || !row.wordEntry || !row.wordSegment) return
 
         const direction = row.question.direction
@@ -955,7 +1039,7 @@ export class VideoController implements Routes {
           await db.delete(exercises)
           await db.delete(pronunciations)
           await db.delete(wordEntries)
-          
+
           // Supprimer enfin les vidéos
           await db.delete(videos)
 
