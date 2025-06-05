@@ -312,7 +312,37 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
           translations: Array.isArray(data.translations) ? data.translations : [],
           examples: Array.isArray(data.examples) ? data.examples : [],
           level: data.level,
-          exercises: data.exercises.map((exercise: unknown) => ExerciseDataSchema.parse(exercise)),
+          exercises: data.exercises.map((exercise: Exercise) => {
+            const deToFrQuestion = exercise.questions.find((q) => q.direction === 'de_to_fr')
+            const frToDeQuestion = exercise.questions.find((q) => q.direction === 'fr_to_de')
+
+            return {
+              type: exercise.type,
+              level: exercise.level,
+              de_to_fr: deToFrQuestion
+                ? {
+                    question: {
+                      de: deToFrQuestion.questionDe,
+                      fr: deToFrQuestion.questionFr
+                    },
+                    word_to_translate: deToFrQuestion.wordToTranslate,
+                    correct_answer: deToFrQuestion.correctAnswer,
+                    options: deToFrQuestion.options.map((opt) => opt.text)
+                  }
+                : undefined,
+              fr_to_de: frToDeQuestion
+                ? {
+                    question: {
+                      de: frToDeQuestion.questionDe,
+                      fr: frToDeQuestion.questionFr
+                    },
+                    word_to_translate: frToDeQuestion.wordToTranslate,
+                    correct_answer: frToDeQuestion.correctAnswer,
+                    options: frToDeQuestion.options.map((opt) => opt.text)
+                  }
+                : undefined
+            }
+          }),
           pronunciations: (data.pronunciations || []).map((p: any) => ({
             file: p.filePath,
             type: p.type,
