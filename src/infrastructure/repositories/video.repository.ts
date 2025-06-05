@@ -44,10 +44,10 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     super(videos)
   }
 
-  private validateTime(time: unknown): number {
+private validateTime(time: unknown): number {
     const num = Number(time)
-    return Number.isNaN(num) ? 0 : Math.floor(num)
-  }
+    return Number.isNaN(num) ? 0 : num
+}
 
   private validateScore(score: unknown): number {
     const num = Number(score)
