@@ -620,6 +620,37 @@ export class VideoController implements Routes {
       return c.json(result)
     })
 
+    // Supprimer toutes les vidéos et leurs données associées
+    this.controller.delete('/videos/all', async (c) => {
+      try {
+        // Supprimer d'abord les données associées
+        await db.delete(audioSegments)
+        await db.delete(wordSegments)
+        await db.delete(exerciseOptions)
+        await db.delete(exerciseQuestions)
+        await db.delete(exercises)
+        await db.delete(pronunciations)
+        await db.delete(wordEntries)
+        
+        // Supprimer les vidéos
+        await db.delete(videos)
+
+        return c.json({
+          success: true,
+          message: 'Toutes les vidéos et leurs données associées ont été supprimées'
+        })
+      } catch (error: any) {
+        console.error('Error deleting all videos:', error)
+        return c.json(
+          {
+            success: false,
+            error: `Erreur lors de la suppression: ${error.message}`
+          },
+          500
+        )
+      }
+    })
+
     // Récupérer toutes les prononciations
     this.controller.get('/pronunciations', async (c) => {
       const result = await db
@@ -633,6 +664,148 @@ export class VideoController implements Routes {
         .from(pronunciations)
       return c.json(result)
     })
+
+    this.controller.openapi(
+      createRoute({
+        method: 'delete',
+        path: '/videos/all',
+        tags: ['Videos'],
+        summary: 'Delete All Videos',
+        description: 'Delete all videos and their associated data from the database',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'All videos successfully deleted'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c) => {
+        try {
+          // Supprimer les données associées dans l'ordre pour respecter les contraintes de clés étrangères
+          await db.delete(exerciseOptions)
+          await db.delete(exerciseQuestions)
+          await db.delete(exercises)
+          await db.delete(pronunciations)
+          await db.delete(wordEntries)
+          await db.delete(wordSegments)
+          await db.delete(audioSegments)
+          await db.delete(videos)
+
+          return c.json({
+            success: true,
+            message: 'Toutes les vidéos et leurs données associées ont été supprimées'
+          })
+        } catch (error: any) {
+          console.error('Error deleting all videos:', error)
+          return c.json(
+            {
+              success: false,
+              error: `Erreur lors de la suppression: ${error.message}`
+            },
+            500
+          )
+        }
+      }
+    )
+
+    // Supprimer toutes les vidéos
+    this.controller.delete('/videos/all', async (c) => {
+      try {
+        // Supprimer les données associées dans l'ordre pour respecter les contraintes de clés étrangères
+        await db.delete(exerciseOptions)
+        await db.delete(exerciseQuestions)
+        await db.delete(exercises)
+        await db.delete(pronunciations)
+        await db.delete(wordEntries)
+        await db.delete(wordSegments)
+        await db.delete(audioSegments)
+        await db.delete(videos)
+
+        return c.json({
+          success: true,
+          message: 'Toutes les vidéos et leurs données associées ont été supprimées'
+        })
+      } catch (error: any) {
+        console.error('Error deleting all videos:', error)
+        return c.json(
+          {
+            success: false,
+            error: `Erreur lors de la suppression: ${error.message}`
+          },
+          500
+        )
+      }
+    })
+
+    // Supprimer toutes les vidéos
+    this.controller.openapi(
+      createRoute({
+        method: 'delete',
+        path: '/videos/all',
+        tags: ['Videos'],
+        summary: 'Delete All Videos',
+        description: 'Delete all videos and their associated data from the database',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'All videos deleted successfully'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c) => {
+        try {
+          // Supprimer d'abord les données associées (segments, exercices, etc.)
+          await db.delete(audioSegments)
+          await db.delete(wordSegments)
+          await db.delete(exerciseOptions)
+          await db.delete(exerciseQuestions)
+          await db.delete(exercises)
+          await db.delete(pronunciations)
+          await db.delete(wordEntries)
+          
+          // Supprimer enfin les vidéos
+          await db.delete(videos)
+
+          return c.json({
+            success: true,
+            message: 'Toutes les vidéos et leurs données associées ont été supprimées'
+          })
+        } catch (error: any) {
+          console.error('Error deleting all videos:', error)
+          return c.json(
+            {
+              success: false,
+              error: `Erreur lors de la suppression: ${error.message}`
+            },
+            500
+          )
+        }
+      }
+    )
 
     // Récupérer les exercices d'une vidéo avec leurs questions et options, groupés par direction
     this.controller.get('/videos/:id/exercises', async (c) => {
@@ -723,7 +896,7 @@ export class VideoController implements Routes {
           exercise: (typeof exercisesResult)[0] | undefined
           question: (typeof questionsResult)[0] & { options: typeof optionsResult }
         }>
-      > = {
+      = {
         de_to_fr: [],
         fr_to_de: []
       }
@@ -743,6 +916,65 @@ export class VideoController implements Routes {
 
       return c.json(exercisesByDirection)
     })
+
+    this.controller.openapi(
+      createRoute({
+        method: 'delete',
+        path: '/videos/all',
+        tags: ['Videos'],
+        summary: 'Delete All Videos',
+        description: 'Delete all videos and their associated data from the database',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'All videos deleted successfully'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c) => {
+        try {
+          // Supprimer d'abord les données associées (segments, exercices, etc.)
+          await db.delete(audioSegments)
+          await db.delete(wordSegments)
+          await db.delete(exerciseOptions)
+          await db.delete(exerciseQuestions)
+          await db.delete(exercises)
+          await db.delete(pronunciations)
+          await db.delete(wordEntries)
+          
+          // Supprimer enfin les vidéos
+          await db.delete(videos)
+
+          return c.json({
+            success: true,
+            message: 'Toutes les vidéos et leurs données associées ont été supprimées'
+          })
+        } catch (error: any) {
+          console.error('Error deleting all videos:', error)
+          return c.json(
+            {
+              success: false,
+              error: `Erreur lors de la suppression: ${error.message}`
+            },
+            500
+          )
+        }
+      }
+    )
+
+    // ...existing code...
   }
 
   private renderHomePage() {
