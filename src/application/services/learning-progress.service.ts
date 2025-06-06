@@ -416,7 +416,6 @@ export class LearningProgressService {
         videoId,
         score,
         isCorrect,
-        timeTaken,
         completedAt: new Date()
       })
 
