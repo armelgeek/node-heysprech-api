@@ -1,23 +1,8 @@
 import { relations } from 'drizzle-orm'
-import { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries } from './exercise.schema'
+import { exercises, wordEntries } from './exercise.schema'
 import { exerciseCompletions, userProgress, userVocabulary, videoProgress } from './learning.schema'
-import { roles, userRoles, users } from './schema'
+import { users } from './schema'
 import { videos } from './video.schema'
-
-export * from './schema'
-export * from './video.schema'
-export * from './learning.schema'
-
-export const userRolesRelations = relations(userRoles, ({ one }) => ({
-  user: one(roles, {
-    fields: [userRoles.userId],
-    references: [roles.id]
-  }),
-  role: one(roles, {
-    fields: [userRoles.roleId],
-    references: [roles.id]
-  })
-}))
 
 export const userProgressRelations = relations(userProgress, ({ one }) => ({
   user: one(users, {
@@ -58,5 +43,3 @@ export const videoProgressRelations = relations(videoProgress, ({ one }) => ({
     references: [videos.id]
   })
 }))
-
-export { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries }

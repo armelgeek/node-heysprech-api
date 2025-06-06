@@ -569,7 +569,6 @@ export class VideoController implements Routes {
             fileSize: videos.fileSize,
             duration: videos.duration,
             language: videos.language,
-            duration: videos.duration,
             youtubeId: videos.youtubeId,
             transcriptionStatus: videos.transcriptionStatus,
             createdAt: videos.createdAt,
@@ -597,7 +596,6 @@ export class VideoController implements Routes {
         .innerJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
         .orderBy(wordSegments.startTime, wordSegments.endTime)
 
-      // Restructurer les résultats pour grouper les segments par vidéo
       const videosMap = new Map()
 
       result.forEach((row) => {
