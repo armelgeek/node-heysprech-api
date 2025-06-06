@@ -62,7 +62,7 @@ export class VideoService {
       path: file.path,
       size: file.size,
       language: options.language,
-      categoryId: options.categoryId,
+      category: options.categoryId,
       difficultyId: options.difficultyId
     })
 
@@ -158,7 +158,7 @@ export class VideoService {
     path: string
     size: number
     language?: string
-    categoryId?: number
+    category: any
     difficultyId?: number
   }): Promise<VideoModel | null> {
     const videoId = await this.videoRepository.insertVideo({
@@ -170,13 +170,64 @@ export class VideoService {
       transcriptionStatus: 'pending'
     })
 
-    if (data.categoryId || data.difficultyId) {
+    if (data.category || data.difficultyId) {
       await this.videoRepository.updateVideoCategory(videoId, {
-        categoryId: data.categoryId,
+        categoryId: data.category,
         difficultyId: data.difficultyId
       })
     }
 
     return this.videoRepository.getVideoById(videoId)
+  }
+
+  async completeVideoSegments(videoId: number, userId: string): Promise<void> {
+    const video = await this.videoRepository.getVideoById(videoId)
+    if (!video) {
+      throw new Error(`Video with ID ${videoId} not found`)
+    }
+
+    // Get all audio segment IDs from the video model
+    const segments = video.segments
+    if (!segments || segments.length === 0) {
+      throw new Error(`No segments found for video ${videoId}`)
+    }
+
+    const segmentIds = segments.map((segment) => segment.id)
+    await this.videoRepository.markSegmentsAsCompleted(videoId, userId, segmentIds)
+  }
+
+  async getVideoProgress(
+    videoId: number,
+    userId: string
+  ): Promise<{ completedSegments: number; totalSegments: number; progress: number }> {
+    const video = await this.videoRepository.getVideoById(videoId)
+    if (!video) {
+      throw new Error(`Video with ID ${videoId} not found`)
+    }
+
+    // Get total segments
+    const segments = video.segments
+    const totalSegments = segments ? segments.length : 0
+
+    if (totalSegments === 0) {
+      return {
+        completedSegments: 0,
+        totalSegments: 0,
+        progress: 0
+      }
+    }
+
+    // Get completed segments
+    const completedSegmentIds = await this.videoRepository.getCompletedSegments(videoId, userId)
+    const completedSegments = completedSegmentIds.length
+
+    // Calculate progress as percentage
+    const progress = (completedSegments / totalSegments) * 100
+
+    return {
+      completedSegments,
+      totalSegments,
+      progress
+    }
   }
 }

@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries } from './exercise.schema'
+import { exercises, wordEntries } from './exercise.schema'
 import { exerciseCompletions, userProgress, userVocabulary, videoProgress } from './learning.schema'
 import { roles, userRoles, users } from './schema'
 import { videos } from './video.schema'
@@ -7,6 +7,10 @@ import { videos } from './video.schema'
 export * from './schema'
 export * from './video.schema'
 export * from './learning.schema'
+export * from './category.schema'
+export { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries } from './exercise.schema'
+export * from './learning.relations'
+export * from './exercise.relations'
 
 export const userRolesRelations = relations(userRoles, ({ one }) => ({
   user: one(roles, {
@@ -58,5 +62,3 @@ export const videoProgressRelations = relations(videoProgress, ({ one }) => ({
     references: [videos.id]
   })
 }))
-
-export { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries }

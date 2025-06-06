@@ -14,7 +14,7 @@ import {
   wordEntries
 } from '../database/schema/exercise.schema'
 import { videoToCategoryMap, videoToDifficultyMap } from '../database/schema/video-category.schema'
-import { audioSegments, processingLogs, videos, wordSegments } from '../database/schema/video.schema'
+import { audioSegments, completedSegments, processingLogs, videos, wordSegments } from '../database/schema/video.schema'
 import { BaseRepository } from './base.repository'
 import type { PgTransaction } from 'drizzle-orm/pg-core'
 
@@ -45,6 +45,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   constructor() {
     super(videos)
   }
+
   private validateTime(time: unknown): number {
     const num = Number(time)
     // Convert decimal seconds to milliseconds, ensuring proper handling of decimal values
@@ -796,5 +797,48 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       categoryIds: result.map((r) => r.categoryId).filter((id): id is number => id !== null),
       difficultyId: result[0]?.difficultyId ?? undefined
     }
+  }
+
+  async markSegmentsAsCompleted(videoId: number, userId: string, segmentIds: number[]): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Check if segments exist and belong to the video
+      const existingSegments = await tx
+        .select({ id: audioSegments.id })
+        .from(audioSegments)
+        .where(
+          and(
+            eq(audioSegments.videoId, videoId),
+            sql`${audioSegments.id} = ANY(ARRAY[${segmentIds.join(',')}]::int4[])`
+          )
+        )
+
+      if (existingSegments.length !== segmentIds.length) {
+        throw new Error('Some segments were not found or do not belong to this video')
+      }
+
+      // Insert completed segments, ignoring duplicates
+      for (const segmentId of segmentIds) {
+        await tx
+          .insert(completedSegments)
+          .values({
+            videoId,
+            userId,
+            segmentId,
+            completedAt: new Date()
+          })
+          .onConflictDoNothing({
+            target: [completedSegments.videoId, completedSegments.userId, completedSegments.segmentId]
+          })
+      }
+    })
+  }
+
+  async getCompletedSegments(videoId: number, userId: string): Promise<number[]> {
+    const completed = await db
+      .select({ segmentId: completedSegments.segmentId })
+      .from(completedSegments)
+      .where(and(eq(completedSegments.videoId, videoId), eq(completedSegments.userId, userId)))
+
+    return completed.map((c) => c.segmentId)
   }
 }
