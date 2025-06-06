@@ -4,18 +4,21 @@ import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { eq } from 'drizzle-orm'
-import { html } from 'hono/html'
+import { LearningProgressService } from '@/application/services/learning-progress.service'
 import { VideoService } from '@/application/services/video.service'
+import type { WordSegment } from '@/domain/interfaces/video-controller.types'
+import type { Routes } from '@/domain/types'
 import { db } from '../database/db'
 import {
+  audioSegments,
   exerciseOptions,
   exerciseQuestions,
   exercises,
   pronunciations,
-  wordEntries
-} from '../database/schema/exercise.schema'
-import { audioSegments, videos, wordSegments } from '../database/schema/video.schema'
-import type { Routes } from '../../domain/types'
+  videos,
+  wordEntries,
+  wordSegments
+} from '../database/schema'
 
 const baseDir = path.join(os.homedir(), 'heysprech-data')
 
@@ -59,6 +62,28 @@ const queueStatusSchema = z
     failed: z.number()
   })
   .openapi('QueueStatus')
+
+const learningStatusResponseSchema = z
+  .object({
+    completedExercises: z.number(),
+    masteredWords: z.number(),
+    totalSegments: z.number(),
+    progress: z.number(),
+    lastActivity: z.string().optional()
+  })
+  .openapi('LearningStatus')
+
+const segmentResponseSchema = z
+  .object({
+    id: z.number(),
+    start: z.number(),
+    end: z.number(),
+    text: z.string(),
+    translation: z.string().optional(),
+    exerciseCount: z.number(),
+    wordCount: z.number()
+  })
+  .openapi('VideoSegment')
 
 // Request Schemas
 const uploadRequestSchema = z.object({
@@ -114,22 +139,17 @@ const uploadResponseSchema = z.object({
 
 export class VideoController implements Routes {
   public controller: OpenAPIHono
-  app: any
-  videoService: VideoService
+  private videoService: VideoService
 
   constructor() {
     this.controller = new OpenAPIHono()
     this.videoService = new VideoService()
   }
 
-  public initRoutes() {
+  public initRoutes(): void {
     this.controller.use('/public/*', serveStatic({ root: baseDir }))
     this.controller.use('/audios/*', serveStatic({ root: baseDir }))
     this.controller.use('/transcriptions/*', serveStatic({ root: baseDir }))
-
-    this.controller.get('/', (c) => {
-      return c.html(this.renderHomePage())
-    })
 
     this.controller.openapi(
       createRoute({
@@ -172,7 +192,7 @@ export class VideoController implements Routes {
       async (c: any) => {
         try {
           const body = await c.req.parseBody()
-          const file = body.audioFile
+          const file = body.audioFile as File
 
           if (!file || !(file instanceof File)) {
             return c.json(
@@ -214,7 +234,6 @@ export class VideoController implements Routes {
             )
           }
 
-          // Validate category and difficulty IDs if provided
           if (formData.categoryId && Number.isNaN(formData.categoryId)) {
             return c.json(
               {
@@ -397,8 +416,9 @@ export class VideoController implements Routes {
         try {
           const videos = await this.videoService.getRecentVideos(20)
           return c.json(videos)
-        } catch (error: any) {
-          return c.json({ success: false, error: error.message }, 500)
+        } catch (error: unknown) {
+          const err = error as Error
+          return c.json({ success: false, error: err.message }, 500)
         }
       }
     )
@@ -438,7 +458,7 @@ export class VideoController implements Routes {
         }
       }),
       async (c: any) => {
-        const id = Number.parseInt(c.req.param('id'))
+        const id = Number(c.req.param('id'))
         if (Number.isNaN(id)) {
           return c.json({ success: false, error: 'Invalid video ID' }, 400)
         }
@@ -489,7 +509,7 @@ export class VideoController implements Routes {
         }
       }),
       async (c: any) => {
-        const id = Number.parseInt(c.req.param('id'))
+        const id = Number.parseInt(c.req.param('id'), 10)
         if (Number.isNaN(id)) {
           return c.json({ success: false, error: 'Invalid video ID' }, 400)
         }
@@ -558,7 +578,7 @@ export class VideoController implements Routes {
       }
     )
 
-    this.controller.get('/videos', async (c) => {
+    this.controller.get('/videos', async (c: any) => {
       const result = await db
         .select({
           video: {
@@ -569,7 +589,6 @@ export class VideoController implements Routes {
             fileSize: videos.fileSize,
             duration: videos.duration,
             language: videos.language,
-            duration: videos.duration,
             youtubeId: videos.youtubeId,
             transcriptionStatus: videos.transcriptionStatus,
             createdAt: videos.createdAt,
@@ -597,7 +616,6 @@ export class VideoController implements Routes {
         .innerJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
         .orderBy(wordSegments.startTime, wordSegments.endTime)
 
-      // Restructurer les résultats pour grouper les segments par vidéo
       const videosMap = new Map()
 
       result.forEach((row) => {
@@ -622,7 +640,7 @@ export class VideoController implements Routes {
 
           if (row.wordSegment) {
             const audioSegment = video.audioSegments.find((segment: any) => segment.id === row.audioSegment?.id)
-            if (audioSegment && !audioSegment.wordSegments.some((ws: any) => ws.id === row.wordSegment?.id)) {
+            if (audioSegment && !audioSegment.wordSegments.some((ws: WordSegment) => ws.id === row.wordSegment?.id)) {
               let inserted = false
               // Insérer le word segment à la bonne position
               for (let i = 0; i < audioSegment.wordSegments.length; i++) {
@@ -923,7 +941,7 @@ export class VideoController implements Routes {
     )
 
     // Récupérer les exercices d'une vidéo avec leurs questions et options, groupés par direction
-    this.controller.get('/videos/:id/exercises', async (c) => {
+    this.controller.get('/videos/:id/exercises', async (c: any) => {
       const videoId = Number(c.req.param('id'))
 
       if (Number.isNaN(videoId)) {
@@ -975,25 +993,51 @@ export class VideoController implements Routes {
         .where(eq(audioSegments.videoId, videoId))
 
       // Organiser les résultats par direction
-      const exercisesByDirection: Record<string, any[]> = {
+      const exercisesByDirection: Record<
+        string,
+        Array<{
+          exercise: {
+            id: number
+            type: string
+            level: string
+          }
+          word: {
+            word: string
+            translations: string[]
+          }
+          question: {
+            id: number
+            direction: string
+            questionDe: string
+            questionFr: string
+            wordToTranslate: string
+            correctAnswer: string
+            options: Array<{
+              id: number
+              optionText: string
+              isCorrect: boolean
+            }>
+          }
+          segment: {
+            id: number
+            word: string
+            text: string
+          }
+        }>
+      > = {
         de_to_fr: [],
         fr_to_de: []
       }
 
       // Grouper les options par question
-      const optionsByQuestion = new Map()
-      exercisesData.forEach((row) => {
-        if (row.option && row.question) {
-          if (!optionsByQuestion.has(row.question.id)) {
-            optionsByQuestion.set(row.question.id, [])
-          }
-          optionsByQuestion.get(row.question.id).push({
-            id: row.option.id,
-            optionText: row.option.optionText,
-            isCorrect: row.option.isCorrect
-          })
-        }
-      })
+      const optionsByQuestion: Map<
+        number,
+        Array<{
+          id: number
+          optionText: string
+          isCorrect: boolean
+        }>
+      > = new Map()
 
       // Traiter les résultats
       const processedExercises = new Set()
@@ -1010,7 +1054,7 @@ export class VideoController implements Routes {
             },
             word: {
               word: row.wordEntry.word,
-              translations: row.wordEntry.translations
+              translations: row.wordEntry.translations as string[]
             },
             question: {
               id: row.question.id,
@@ -1159,7 +1203,7 @@ export class VideoController implements Routes {
         }
       }),
       async (c: any) => {
-        const id = Number.parseInt(c.req.param('id'))
+        const id = Number(c.req.param('id'))
         if (Number.isNaN(id)) {
           return c.json({ success: false, error: 'Invalid video ID' }, 400)
         }
@@ -1255,72 +1299,242 @@ export class VideoController implements Routes {
         }
       }
     )
-  }
 
-  private renderHomePage() {
-    return html`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>API Documentation</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 40px 20px;
-              line-height: 1.6;
-              background-color: #f8f9fa;
-            }
-            .container {
-              text-align: center;
-              background-color: white;
-              padding: 40px;
-              border-radius: 10px;
-              box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            }
-            .links {
-              margin-top: 40px;
-              display: flex;
-              justify-content: center;
-              gap: 20px;
-              flex-wrap: wrap;
-            }
-            .link-button {
-              display: inline-block;
-              padding: 15px 30px;
-              background-color: #0066cc;
-              color: white;
-              text-decoration: none;
-              border-radius: 5px;
-              font-weight: bold;
-              transition: background-color 0.2s;
-              min-width: 200px;
-            }
-            .link-button:hover {
-              background-color: #0052a3;
-              transform: translateY(-2px);
-            }
-            .description {
-              color: #666;
-              margin: 20px 0;
-              font-size: 1.1em;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>🚀 API Documentation</h1>
-            <p class="description">Access the documentation and API references for the Audio Processing System</p>
+    // Get learning status for a video
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/api/videos/{videoId}/learning-status',
 
-            <div class="links">
-              <a href="/docs" class="link-button">📚 Documentation</a>
-              <a href="/api/auth/reference" class="link-button">🔧 API Reference</a>
-            </div>
-          </div>
-        </body>
-      </html>
-    `
+        request: {
+          params: z.object({
+            videoId: z.number()
+          })
+        },
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: learningStatusResponseSchema
+              }
+            },
+            description: 'Successfully retrieved video learning status'
+          },
+          404: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Video not found'
+          }
+        }
+      }),
+      async (c: any) => {
+        const user = c.get('user')
+        const userId = user.id
+        const videoId = c.req.param('videoId')
+
+        const videoService = new VideoService()
+        const learningService = new LearningProgressService()
+
+        const video = await videoService.getVideoById(videoId)
+        if (!video) {
+          return c.json({ success: false, error: 'Video not found' }, 404)
+        }
+
+        const status = await learningService.getVideoLearningStatus(userId, videoId)
+        return c.json(status)
+      }
+    )
+
+    // Get video segments for learning
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/api/videos/{videoId}/segments',
+        request: {
+          params: z.object({
+            videoId: z.number()
+          }),
+          query: z.object({
+            offset: z.number().default(0),
+            limit: z.number().default(10)
+          })
+        },
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: z.array(segmentResponseSchema)
+              }
+            },
+            description: 'Successfully retrieved video segments'
+          }
+        }
+      }),
+      async (c: any) => {
+        const videoId = c.req.param('videoId')
+
+        // const videoService = new VideoService()
+        const learningService = new LearningProgressService()
+        const segments = await learningService.getVideoSegments(videoId)
+        return c.json(segments)
+      }
+    )
+
+    // Mark video segment as completed
+    this.controller.openapi(
+      createRoute({
+        method: 'post',
+        path: '/api/videos/{videoId}/segments/{segmentId}/complete',
+
+        request: {
+          params: z.object({
+            videoId: z.number(),
+            segmentId: z.number()
+          })
+        },
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'Successfully marked segment as completed'
+          }
+        }
+      }),
+      async (c: any) => {
+        const user = c.get('user')
+        const videoId = c.req.param('videoId')
+        const segmentId = c.req.param('segmentId')
+
+        const learningService = new LearningProgressService()
+        await learningService.completeVideoSegment(user.id, videoId, segmentId)
+
+        return c.json({
+          success: true,
+          message: 'Segment marked as completed'
+        })
+      }
+    )
+
+    this.controller.get('/videos/learning-status', async (c) => {
+      const user = c.get('user')
+
+      if (!user) {
+        return c.json({ success: false, error: 'Unauthorized' }, 401)
+      }
+
+      try {
+        const learningService = new LearningProgressService()
+        const status = await learningService.getUserProgress(user.id)
+        return c.json(status)
+      } catch (error: any) {
+        return c.json({ success: false, error: error.message }, 500)
+      }
+    })
+
+    this.controller.get('/videos/:id/segments', async (c) => {
+      const videoId = Number(c.req.param('id'))
+
+      if (Number.isNaN(videoId)) {
+        return c.json({ success: false, error: 'Invalid video ID' }, 400)
+      }
+
+      try {
+        const learningService = new LearningProgressService()
+        const segments = await learningService.getVideoSegments(videoId)
+        return c.json(segments)
+      } catch (error: any) {
+        return c.json({ success: false, error: error.message }, 500)
+      }
+    })
+
+    this.controller.post('/videos/:id/segments/complete', async (c) => {
+      const user = c.get('user')
+      const videoId = Number(c.req.param('id'))
+
+      if (Number.isNaN(videoId)) {
+        return c.json({ success: false, error: 'Invalid video ID' }, 400)
+      }
+
+      try {
+        await this.videoService.completeVideoSegments(videoId, user.id)
+        return c.json({ success: true, message: 'Segments marked as completed' })
+      } catch (error: any) {
+        return c.json({ success: false, error: error.message }, 500)
+      }
+    })
+
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/videos/{id}/progress',
+        tags: ['Learning'],
+        summary: 'Get Video Progress',
+        description: 'Get the learning progress for a specific video for the authenticated user',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'The ID of the video',
+            schema: { type: 'number' }
+          }
+        ],
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: z
+                  .object({
+                    completedSegments: z.number(),
+                    totalSegments: z.number(),
+                    progress: z.number()
+                  })
+                  .openapi('VideoProgress')
+              }
+            },
+            description: 'Successfully retrieved video progress'
+          },
+          400: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Invalid video ID'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c:any) => {
+        const user = c.get('user')
+        const videoId = Number(c.req.param('id'))
+
+        if (Number.isNaN(videoId)) {
+          return c.json({ success: false, error: 'Invalid video ID' }, 400)
+        }
+
+        try {
+          const progress = await this.videoService.getVideoProgress(videoId, user.id)
+          return c.json(progress)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
+      }
+    )
   }
 
   public getRouter() {

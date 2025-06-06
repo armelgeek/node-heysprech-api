@@ -55,4 +55,13 @@ export interface VideoRepositoryInterface {
   }>
   insertExercises: (exercises: ExerciseData[], word: string) => Promise<void>
   insertPronunciations: (pronunciations: PronunciationData[], word: string) => Promise<void>
+  /**
+   * Mark a list of segments as completed for a user
+   */
+  markSegmentsAsCompleted: (videoId: number, userId: string, segmentIds: number[]) => Promise<void>
+
+  /**
+   * Get a list of completed segment IDs for a user
+   */
+  getCompletedSegments: (videoId: number, userId: string) => Promise<number[]>
 }

@@ -72,3 +72,15 @@ export const wordSegments = pgTable('word_segments', {
   confidenceScore: integer('confidence_score').notNull(),
   positionInSegment: integer('position_in_segment').notNull()
 })
+
+export const completedSegments = pgTable('completed_segments', {
+  id: serial('id').primaryKey(),
+  videoId: integer('video_id')
+    .notNull()
+    .references(() => videos.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull(),
+  segmentId: integer('segment_id')
+    .notNull()
+    .references(() => audioSegments.id, { onDelete: 'cascade' }),
+  completedAt: timestamp('completed_at').defaultNow()
+})
