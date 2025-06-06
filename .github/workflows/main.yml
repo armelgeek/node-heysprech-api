@@ -1,0 +1,54 @@
+name: Deployment
+
+on:
+  push:
+    branches:
+      - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Prepare tmp folder on server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+          port: 22
+          script: |
+            mkdir -p /var/www/tmp-node-heysprech-api
+            rm -rf /var/www/tmp-node-heysprech-api/*
+
+      - name: Upload project to tmp folder
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+          port: 22
+          source: "./"
+          target: "/var/www/tmp-node-heysprech-api/"
+          overwrite: true
+
+      - name: Deploy and restart with pm2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+          port: 22
+          script: |
+            if [ -d /var/www/node-heysprech-api ]; then
+              mv /var/www/node-heysprech-api /var/www/backup-node-heysprech-api-$(date +%s)
+            fi
+            mv /var/www/tmp-node-heysprech-api /var/www/node-heysprech-api
+            cd /var/www/node-heysprech-api
+            bun install
