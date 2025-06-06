@@ -10,10 +10,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-      - name: Prepare tmp folder on server
+      - name: Use Node.js (for tooling, not bun)
+        uses: actions/setup-node@v1
+        with:
+          node-version: '20.x'
+
+      - name: Clean server folder
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
@@ -22,10 +26,9 @@ jobs:
           passphrase: ${{ secrets.PASSPHRASE }}
           port: 22
           script: |
-            mkdir -p /var/www/tmp-node-heysprech-api
-            rm -rf /var/www/tmp-node-heysprech-api/*
+            rm -rf /var/www/node-heysprech-api/*
 
-      - name: Upload project to tmp folder
+      - name: Upload files via SCP
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.HOST }}
@@ -34,10 +37,10 @@ jobs:
           passphrase: ${{ secrets.PASSPHRASE }}
           port: 22
           source: "./"
-          target: "/var/www/tmp-node-heysprech-api/"
+          target: "/var/www/node-heysprech-api/"
           overwrite: true
 
-      - name: Deploy and restart with pm2
+      - name: Install and start app with Bun and PM2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
@@ -46,11 +49,17 @@ jobs:
           passphrase: ${{ secrets.PASSPHRASE }}
           port: 22
           script: |
-            curl -fsSL https://bun.sh/install | bash
             export BUN_INSTALL="$HOME/.bun"
             export PATH="$BUN_INSTALL/bin:$PATH"
 
-            cd /var/www/node-heysprech-api
+            if ! command -v bun &> /dev/null
+            then
+              curl -fsSL https://bun.sh/install | bash
+              export PATH="$HOME/.bun/bin:$PATH"
+            fi
+
+            cd /var/www/node-heysprech-api/
+
+            rm -rf node_modules package-lock.json
 
             bun install
-        
