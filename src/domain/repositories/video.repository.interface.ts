@@ -26,6 +26,15 @@ export interface VideoRepositoryInterface {
       transcriptionFile?: string
     }
   ) => Promise<void>
+  updateVideoCategory: (
+    videoId: number,
+    data: {
+      categoryId?: number
+      difficultyId?: number
+    }
+  ) => Promise<void>
+  getVideoCategories: (videoId: number) => Promise<{ categoryIds: number[]; difficultyId?: number }>
+  getFilteredVideos: (filters: { categoryId?: number; difficultyId?: number }) => Promise<VideoModel[]>
   logProcessingStep: (
     videoId: number,
     step: string,

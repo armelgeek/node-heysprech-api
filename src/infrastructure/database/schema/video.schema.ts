@@ -4,6 +4,18 @@ export const transcriptionStatusEnum = pgEnum('transcription_status', ['pending'
 
 export const processingStatusEnum = pgEnum('processing_status', ['started', 'completed', 'failed'])
 
+export const videoCategoryEnum = pgEnum('video_category', [
+  'vocabulary',
+  'grammar',
+  'conversation',
+  'pronunciation',
+  'culture',
+  'news',
+  'other'
+])
+
+export const videoDifficultyEnum = pgEnum('video_difficulty', ['beginner', 'intermediate', 'advanced'])
+
 export const videos = pgTable('videos', {
   id: serial('id').primaryKey(),
   title: varchar('title', { length: 500 }).notNull(),
@@ -12,9 +24,12 @@ export const videos = pgTable('videos', {
   fileSize: integer('file_size'),
   duration: integer('duration'),
   language: varchar('language', { length: 10 }).notNull().default('de'),
+  category: videoCategoryEnum('category').notNull().default('other'),
+  difficulty: videoDifficultyEnum('difficulty').notNull().default('intermediate'),
   transcriptionStatus: transcriptionStatusEnum('transcription_status').default('pending'),
   queueJobId: varchar('queue_job_id', { length: 255 }),
   errorMessage: text('error_message'),
+  youtubeId: varchar('youtube_id', { length: 11 }),
   tempInfoFile: varchar('temp_info_file', { length: 1000 }),
   transcriptionFile: varchar('transcription_file', { length: 1000 }),
   createdAt: timestamp('created_at').defaultNow(),

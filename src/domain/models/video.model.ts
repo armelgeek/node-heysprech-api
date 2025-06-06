@@ -73,7 +73,11 @@ export const VideoSchema = z.object({
   originalFilename: z.string(),
   filePath: z.string(),
   fileSize: z.number(),
+  duration: z.number().optional(),
   language: z.string().default('de'),
+  categoryId: z.number().optional(),
+  difficultyId: z.number().optional(),
+  youtubeId: z.string().length(11).optional(),
   transcriptionStatus: z.enum(['pending', 'processing', 'completed', 'failed']).default('pending'),
   queueJobId: z.string().optional(),
   errorMessage: z.string().optional(),
@@ -117,6 +121,10 @@ export class VideoModel {
     return this.data.language
   }
 
+  get youtubeId() {
+    return this.data.youtubeId
+  }
+
   get transcriptionStatus() {
     return this.data.transcriptionStatus
   }
@@ -153,6 +161,14 @@ export class VideoModel {
     return this.data.vocabulary
   }
 
+  get categoryId() {
+    return this.data.categoryId
+  }
+
+  get difficultyId() {
+    return this.data.difficultyId
+  }
+
   static create(data: Omit<Video, 'id'>) {
     return new VideoModel(data)
   }
@@ -184,6 +200,18 @@ export class VideoModel {
       this.data.processedAt = new Date()
     }
 
+    return this
+  }
+
+  updateCategory(categoryId: number | undefined) {
+    this.data.categoryId = categoryId
+    this.data.updatedAt = new Date()
+    return this
+  }
+
+  updateDifficulty(difficultyId: number | undefined) {
+    this.data.difficultyId = difficultyId
+    this.data.updatedAt = new Date()
     return this
   }
 
