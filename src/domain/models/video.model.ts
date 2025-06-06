@@ -73,6 +73,7 @@ export const VideoSchema = z.object({
   originalFilename: z.string(),
   filePath: z.string(),
   fileSize: z.number(),
+  duration: z.number().optional(),
   language: z.string().default('de'),
   youtubeId: z.string().length(11).optional(),
   transcriptionStatus: z.enum(['pending', 'processing', 'completed', 'failed']).default('pending'),

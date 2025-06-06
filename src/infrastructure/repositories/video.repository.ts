@@ -619,6 +619,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       originalFilename: dbVideo.originalFilename,
       filePath: dbVideo.filePath,
       fileSize: dbVideo.fileSize || 0,
+      duration: dbVideo.duration,
       language: dbVideo.language,
       transcriptionStatus: dbVideo.transcriptionStatus ?? 'pending',
       queueJobId: dbVideo.queueJobId || undefined,
