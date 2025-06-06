@@ -46,9 +46,11 @@ jobs:
           passphrase: ${{ secrets.PASSPHRASE }}
           port: 22
           script: |
-            if [ -d /var/www/node-heysprech-api ]; then
-              mv /var/www/node-heysprech-api /var/www/backup-node-heysprech-api-$(date +%s)
-            fi
-            mv /var/www/tmp-node-heysprech-api /var/www/node-heysprech-api
+            curl -fsSL https://bun.sh/install | bash
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+
             cd /var/www/node-heysprech-api
+
             bun install
+        
