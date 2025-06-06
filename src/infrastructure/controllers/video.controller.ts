@@ -1432,7 +1432,7 @@ export class VideoController implements Routes {
           200: {
             content: {
               'application/json': {
-                schema: progressSchema
+                schema: learningStatusResponseSchema
               }
             },
             description: 'Successfully retrieved learning status'
@@ -1514,7 +1514,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c) => {
+      async (c:any) => {
         const videoId = Number(c.req.param('id'))
         if (Number.isNaN(videoId)) {
           return c.json({ success: false, error: 'Invalid video ID' }, 400)
@@ -1582,7 +1582,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c) => {
+      async (c:any) => {
         const user = c.get('user')
         const videoId = Number(c.req.param('id'))
 
@@ -1649,7 +1649,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c: any) => {
+      async (c:any) => {
         const user = c.get('user')
         const videoId = Number(c.req.param('id'))
 
