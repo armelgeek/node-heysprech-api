@@ -50,7 +50,7 @@ export class CategoryController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const categories = await db.select().from(videoCategories)
         return c.json(categories)
       }
@@ -88,7 +88,7 @@ export class CategoryController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const body = await c.req.json()
         const [category] = await db
           .insert(videoCategories)
@@ -142,7 +142,7 @@ export class CategoryController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const id = Number(c.req.param('id'))
         const body = await c.req.json()
         const [category] = await db
@@ -177,7 +177,7 @@ export class CategoryController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const levels = await db.select().from(difficultyLevels).orderBy(difficultyLevels.rank)
         return c.json(levels)
       }
@@ -215,7 +215,7 @@ export class CategoryController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const body = await c.req.json()
         const [level] = await db
           .insert(difficultyLevels)
@@ -270,7 +270,7 @@ export class CategoryController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const id = Number(c.req.param('id'))
         const body = await c.req.json()
         const [level] = await db
