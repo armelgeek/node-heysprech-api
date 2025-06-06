@@ -26,7 +26,7 @@ jobs:
           passphrase: ${{ secrets.PASSPHRASE }}
           port: 22
           script: |
-            rm -rf /var/www/node-heysprech-api/*
+            rm -rf /var/www/node-heysprech-api/!(.env|.env.production)
 
       - name: Upload files via SCP
         uses: appleboy/scp-action@master
@@ -63,6 +63,7 @@ jobs:
             rm -rf node_modules package-lock.json
 
             bun install
+            bun run build
             pm2 delete heysprech-api || true
-            PORT=5000 pm2 start bun --name heysprech-api -- run start
+            PORT=5000 pm2 start bun --name heysprech-api -- run prod
             pm2 save
