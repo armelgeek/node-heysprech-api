@@ -22,8 +22,8 @@ export const Meteors = ({ number }: { number: number }) => {
 }
 
 Home.get('/', (c) => {
-  const title = 'Sprech Audio Processing'
-  const description = 'Upload and process audio files with Sprech for high-quality transcription and analysis.'
+  const title = 'Sprech API Documentation'
+  const description = 'Explore our comprehensive API documentation for audio processing and transcription services.'
 
   return c.html(
     <html>
@@ -74,106 +74,39 @@ Home.get('/', (c) => {
         />
       </head>
       <body class="min-h-screen bg-black overflow-x-hidden flex flex-col">
-        <main class="flex-1 flex flex-col gap-4 max-w-4xl mx-auto p-4 sm:p-8 relative">
-          <div class="relative">
-            <div class="flex flex-col gap-0.5">
-              <span class="text-xs uppercase bg-opacity-15 rounded text-center max-w-fit px-2 py-1 font-bold tracking-wide bg-purple-500 text-purple-500">
-                Audio Processing
+        <main class="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 relative">
+          <div class="max-w-2xl w-full bg-white bg-opacity-5 rounded-lg p-8 backdrop-blur-sm">
+            <div class="text-center mb-8">
+              <span class="text-xs uppercase bg-purple-500 bg-opacity-15 rounded px-2 py-1 font-bold tracking-wide text-purple-500">
+                Sprech API
               </span>
-              <span class="text-neutral-200 font-bold text-3xl sm:text-4xl md:text-5xl">Upload and Process Audio</span>
-              <span class="text-neutral-500 max-w-xl">{description}</span>
+              <h1 class="mt-4 text-neutral-200 font-bold text-3xl sm:text-4xl">Audio Processing API</h1>
+              <p class="mt-2 text-neutral-500">{description}</p>
             </div>
-          </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-8 gap-4">
-            <div class="sm:col-span-8 p-4 sm:p-8 bg-white bg-opacity-5 rounded-lg">
-              <form
-                action="/api/v1/upload-audio"
-                method="post"
-                enctype="multipart/form-data"
-                class="flex flex-col gap-4"
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <a
+                href="/docs"
+                class="group p-4 bg-white bg-opacity-5 rounded-lg transition-all hover:bg-opacity-10 border border-transparent hover:border-purple-500"
               >
-                <div>
-                  <label class="block text-sm font-medium text-neutral-200">Audio File</label>
-                  <input
-                    type="file"
-                    name="audioFile"
-                    accept="audio/*"
-                    required
-                    class="mt-1 block w-full text-sm text-neutral-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-500 file:text-neutral-100 hover:file:bg-purple-600 cursor-pointer"
-                  />
+                <div class="flex flex-col gap-2">
+                  <span class="text-purple-500 font-semibold">📚 Documentation</span>
+                  <span class="text-neutral-500 text-sm">Explore our comprehensive API documentation</span>
                 </div>
-                <div>
-                  <label class="block text-sm font-medium text-neutral-200">Title (Optional)</label>
-                  <input
-                    type="text"
-                    name="title"
-                    class="mt-1 block w-full rounded-md bg-white bg-opacity-5 border-transparent focus:border-purple-500 focus:bg-opacity-10 focus:ring-0 text-neutral-200"
-                    placeholder="Enter a title for your audio file"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  class="inline-flex justify-center rounded-md border border-transparent bg-purple-500 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
-                >
-                  Upload and Process
-                </button>
-              </form>
-            </div>
+              </a>
 
-            <div class="sm:col-span-8 p-4 sm:p-8 bg-white bg-opacity-5 rounded-lg">
-              <h2 class="text-xl font-bold text-neutral-200 mb-4">Recent Uploads</h2>
-              <div id="recentUploads" class="space-y-4">
-                Loading...
-              </div>
+              <a
+                href="/api/auth/reference"
+                class="group p-4 bg-white bg-opacity-5 rounded-lg transition-all hover:bg-opacity-10 border border-transparent hover:border-purple-500"
+              >
+                <div class="flex flex-col gap-2">
+                  <span class="text-purple-500 font-semibold">🔑 Authentication</span>
+                  <span class="text-neutral-500 text-sm">Learn how to authenticate your API requests</span>
+                </div>
+              </a>
             </div>
           </div>
-
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `
-                async function updateRecentUploads() {
-                  try {
-                    const response = await fetch('/api/videos/recent');
-                    const videos = await response.json();
-                    
-                    const uploadsHtml = videos.map(video => \`
-                      <div class="p-4 bg-white bg-opacity-5 rounded-lg">
-                        <div class="flex justify-between items-start">
-                          <div>
-                            <h3 class="text-neutral-200 font-medium">\${video.title}</h3>
-                            <p class="text-neutral-500 text-sm">\${video.originalFilename}</p>
-                          </div>
-                          <span class="px-2 py-1 text-xs rounded bg-\${getStatusColor(video.transcriptionStatus)}-500 bg-opacity-15 text-\${getStatusColor(video.transcriptionStatus)}-500">
-                            \${video.transcriptionStatus}
-                          </span>
-                        </div>
-                      </div>
-                    \`).join('');
-                    
-                    document.getElementById('recentUploads').innerHTML = uploadsHtml || 'No recent uploads';
-                  } catch (error) {
-                    console.error('Error fetching recent uploads:', error);
-                  }
-                }
-
-                function getStatusColor(status) {
-                  switch (status) {
-                    case 'completed': return 'green';
-                    case 'processing': return 'blue';
-                    case 'failed': return 'red';
-                    default: return 'yellow';
-                  }
-                }
-
-                // Update list every 5 seconds
-                updateRecentUploads();
-                setInterval(updateRecentUploads, 5000);
-              `
-            }}
-          />
         </main>
-
         <Meteors number={20} />
       </body>
     </html>
