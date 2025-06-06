@@ -42,11 +42,10 @@ interface Exercise {
 export class VideoRepository extends BaseRepository<typeof videos> implements VideoRepositoryInterface {
   constructor() {
     super(videos)
-  }
-
-private validateTime(time: unknown): number {
+  }  private validateTime(time: unknown): number {
     const num = Number(time)
-    return Number.isNaN(num) ? 0 : num
+    // Convert decimal seconds to milliseconds, ensuring proper handling of decimal values
+    return Number.isNaN(num) ? 0 : Math.round(num * 1000)
 }
 
   private validateScore(score: unknown): number {
@@ -219,8 +218,8 @@ private validateTime(time: unknown): number {
   private createWordData(word: any) {
     return {
       word: word.word,
-      startTime: word.startTime,
-      endTime: word.endTime,
+      startTime: this.validateTime(word.startTime) / 1000,  // Convert milliseconds back to seconds for display
+      endTime: this.validateTime(word.endTime) / 1000,      // Convert milliseconds back to seconds for display
       confidenceScore: word.confidenceScore / 1000
     }
   }
