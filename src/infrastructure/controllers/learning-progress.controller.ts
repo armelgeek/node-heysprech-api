@@ -147,9 +147,9 @@ export class LearningProgressController {
         }
       }),
       async (c: any) => {
-          const user = c.get('user')
-          const words = await this.learningProgressService.getVideoWordsForReview(user.id)
-          return c.json(words)
+        const user = c.get('user')
+        const words = await this.learningProgressService.getVideoWordsForReview(user.id)
+        return c.json(words)
       }
     )
 
@@ -176,8 +176,8 @@ export class LearningProgressController {
           }
         }
       }),
-      async (c:any) => {
-        const user= c.get('user')
+      async (c: any) => {
+        const user = c.get('user')
         const body = await c.req.json()
 
         if (body.isCompleted) {

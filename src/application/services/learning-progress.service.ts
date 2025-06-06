@@ -176,7 +176,7 @@ export class LearningProgressService {
     // Get all words that need review (past their next review date or no review date set)
     return await db.query.userVocabulary.findMany({
       where: and(
-        eq(userVocabulary.userId, userId), 
+        eq(userVocabulary.userId, userId),
         or(lte(userVocabulary.nextReview, new Date()), isNull(userVocabulary.nextReview))
       ),
       with: {
@@ -384,9 +384,7 @@ export class LearningProgressService {
 
     // Update mastery level for the word across all videos where it appears
     await Promise.all(
-      wordEntries.map((entry) => 
-        this.updateVideoVocabularyMastery(userId, wordId, entry.videoId, masteryLevel)
-      )
+      wordEntries.map((entry) => this.updateVideoVocabularyMastery(userId, wordId, entry.videoId, masteryLevel))
     )
   }
 

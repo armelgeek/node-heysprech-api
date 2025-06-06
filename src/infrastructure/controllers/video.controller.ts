@@ -528,7 +528,7 @@ export class VideoController implements Routes {
     this.controller.openapi(
       createRoute({
         method: 'get',
-        path: '/api/videos/recent',
+        path: '/videos/recent',
         tags: ['Videos'],
         summary: 'Get Recent Videos API',
         description: 'Retrieve a list of the 10 most recently processed videos',
@@ -1106,7 +1106,6 @@ export class VideoController implements Routes {
       }),
       async (c: any) => {
         try {
-          // Supprimer d'abord les données associées (segments, exercices, etc.)
           await db.delete(audioSegments)
           await db.delete(wordSegments)
           await db.delete(exerciseOptions)
@@ -1115,7 +1114,6 @@ export class VideoController implements Routes {
           await db.delete(pronunciations)
           await db.delete(wordEntries)
 
-          // Supprimer enfin les vidéos
           await db.delete(videos)
 
           return c.json({
@@ -1300,11 +1298,11 @@ export class VideoController implements Routes {
       }
     )
 
-    // Get learning status for a video
     this.controller.openapi(
       createRoute({
         method: 'get',
-        path: '/api/videos/{videoId}/learning-status',
+        tags: ['Learning'],
+        path: '/videos/{videoId}/learning-status',
 
         request: {
           params: z.object({
@@ -1348,11 +1346,11 @@ export class VideoController implements Routes {
       }
     )
 
-    // Get video segments for learning
     this.controller.openapi(
       createRoute({
         method: 'get',
-        path: '/api/videos/{videoId}/segments',
+        tags: ['Learning'],
+        path: '/videos/{videoId}/segments',
         request: {
           params: z.object({
             videoId: z.number()
@@ -1387,7 +1385,8 @@ export class VideoController implements Routes {
     this.controller.openapi(
       createRoute({
         method: 'post',
-        path: '/api/videos/{videoId}/segments/{segmentId}/complete',
+        tags: ['Learning'],
+        path: '/videos/{videoId}/segments/{segmentId}/complete',
 
         request: {
           params: z.object({
@@ -1421,53 +1420,184 @@ export class VideoController implements Routes {
       }
     )
 
-    this.controller.get('/videos/learning-status', async (c) => {
-      const user = c.get('user')
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/videos/learning-status',
+        tags: ['Learning'],
+        security: [{ bearerAuth: [] }],
+        summary: 'Get User Learning Status',
+        description: 'Get the overall learning progress and statistics for the authenticated user',
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: progressSchema
+              }
+            },
+            description: 'Successfully retrieved learning status'
+          },
+          401: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'User not authenticated'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c) => {
+        const user = c.get('user')
+        if (!user) {
+          return c.json({ success: false, error: 'Unauthorized' }, 401)
+        }
 
-      if (!user) {
-        return c.json({ success: false, error: 'Unauthorized' }, 401)
+        try {
+          const learningService = new LearningProgressService()
+          const status = await learningService.getUserProgress(user.id)
+          return c.json(status)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
       }
+    )
 
-      try {
-        const learningService = new LearningProgressService()
-        const status = await learningService.getUserProgress(user.id)
-        return c.json(status)
-      } catch (error: any) {
-        return c.json({ success: false, error: error.message }, 500)
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/videos/{id}/segments',
+        tags: ['Learning'],
+        summary: 'Get Video Segments',
+        description: 'Get all segments of a specific video',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'ID of the video',
+            schema: { type: 'number' }
+          }
+        ],
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: z.array(segmentResponseSchema)
+              }
+            },
+            description: 'Successfully retrieved video segments'
+          },
+          400: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Invalid video ID'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c) => {
+        const videoId = Number(c.req.param('id'))
+        if (Number.isNaN(videoId)) {
+          return c.json({ success: false, error: 'Invalid video ID' }, 400)
+        }
+
+        try {
+          const learningService = new LearningProgressService()
+          const segments = await learningService.getVideoSegments(videoId)
+          return c.json(segments)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
       }
-    })
+    )
 
-    this.controller.get('/videos/:id/segments', async (c) => {
-      const videoId = Number(c.req.param('id'))
+    this.controller.openapi(
+      createRoute({
+        method: 'post',
+        path: '/videos/{id}/segments/complete',
+        tags: ['Learning'],
+        security: [{ bearerAuth: [] }],
+        summary: 'Complete All Video Segments',
+        description: 'Mark all segments of a video as completed for the authenticated user',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'ID of the video',
+            schema: { type: 'number' }
+          }
+        ],
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            },
+            description: 'Successfully marked all segments as completed'
+          },
+          400: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Invalid video ID'
+          },
+          401: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'User not authenticated'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c) => {
+        const user = c.get('user')
+        const videoId = Number(c.req.param('id'))
 
-      if (Number.isNaN(videoId)) {
-        return c.json({ success: false, error: 'Invalid video ID' }, 400)
+        if (Number.isNaN(videoId)) {
+          return c.json({ success: false, error: 'Invalid video ID' }, 400)
+        }
+
+        try {
+          await this.videoService.completeVideoSegments(videoId, user.id)
+          return c.json({ success: true, message: 'Segments marked as completed' })
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
       }
-
-      try {
-        const learningService = new LearningProgressService()
-        const segments = await learningService.getVideoSegments(videoId)
-        return c.json(segments)
-      } catch (error: any) {
-        return c.json({ success: false, error: error.message }, 500)
-      }
-    })
-
-    this.controller.post('/videos/:id/segments/complete', async (c) => {
-      const user = c.get('user')
-      const videoId = Number(c.req.param('id'))
-
-      if (Number.isNaN(videoId)) {
-        return c.json({ success: false, error: 'Invalid video ID' }, 400)
-      }
-
-      try {
-        await this.videoService.completeVideoSegments(videoId, user.id)
-        return c.json({ success: true, message: 'Segments marked as completed' })
-      } catch (error: any) {
-        return c.json({ success: false, error: error.message }, 500)
-      }
-    })
+    )
 
     this.controller.openapi(
       createRoute({
@@ -1519,7 +1649,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         const user = c.get('user')
         const videoId = Number(c.req.param('id'))
 
