@@ -137,12 +137,18 @@ const uploadResponseSchema = z.object({
   })
 })
 
-interface WordUpdate {
-  id: number;
-  startTime: number;
-  endTime: number;
-  confidenceScore: number;
-  positionInSegment?: number;
+interface TimingUpdateResult {
+  segment: {
+    id: number;
+    startTime: number;
+    endTime: number;
+  };
+  words: Array<{
+    id: number;
+    startTime: number;
+    endTime: number;
+    confidenceScore: number;
+  }>;
 }
 
 export class VideoController implements Routes {
@@ -2396,9 +2402,6 @@ export class VideoController implements Routes {
                   }),
                   confidenceScore: z.number().min(0).max(1).openapi({
                     description: 'Confidence score between 0 and 1'
-                  }),
-                  positionInSegment: z.number().int().min(1).optional().openapi({
-                    description: 'Position of the word in the segment (auto-calculated if not provided)'
                   })
                 })
               }
@@ -2418,8 +2421,7 @@ export class VideoController implements Routes {
                     word: z.string(),
                     startTime: z.number(),
                     endTime: z.number(),
-                    confidenceScore: z.number(),
-                    positionInSegment: z.number()
+                    confidenceScore: z.number()
                   })
                 })
               }
@@ -2432,20 +2434,28 @@ export class VideoController implements Routes {
                 schema: errorResponseSchema
               }
             }
+          },
+          404: {
+            description: 'Segment not found',
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            }
           }
         }
       }),
       async (c: any) => {
         const videoId = Number(c.req.param('videoId'))
         const segmentId = Number(c.req.param('segmentId'))
-        
+
         if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
-          return c.json({ success: false, error: 'Invalid ID' }, 400)  
+          return c.json({ success: false, error: 'Invalid ID' }, 400)
         }
 
         try {
           const body = await c.req.json()
-
+          
           // Verify segment exists and belongs to video
           const segment = await db
             .select()
@@ -2457,15 +2467,15 @@ export class VideoController implements Routes {
               )
             )
             .limit(1)
-
+          
           if (!segment.length) {
             return c.json({
-              success: false, 
+              success: false,
               error: 'Segment not found or does not belong to this video'
             }, 404)
           }
 
-          const startTime = body.startTime * 1000 // Convert to milliseconds
+          const startTime = body.startTime * 1000
           const endTime = body.endTime * 1000
 
           // Validate times
@@ -2487,14 +2497,13 @@ export class VideoController implements Routes {
           // Check for overlapping words
           const existingWords = await db
             .select({
-              id: wordSegments.id,
               startTime: wordSegments.startTime,
               endTime: wordSegments.endTime
             })
             .from(wordSegments)
             .where(eq(wordSegments.audioSegmentId, segmentId))
 
-          const hasOverlap = existingWords.some(word => 
+          const hasOverlap = existingWords.some(word =>
             (startTime >= word.startTime && startTime < word.endTime) ||
             (endTime > word.startTime && endTime <= word.endTime) ||
             (startTime <= word.startTime && endTime >= word.endTime)
@@ -2503,19 +2512,19 @@ export class VideoController implements Routes {
           if (hasOverlap) {
             return c.json({
               success: false,
-              error: 'Word overlaps with existing words'
+              error: 'Word would overlap with existing words'
             }, 400)
           }
 
-          // Calculate position if not provided
-          let position = body.positionInSegment
-          if (!position) {
-            const maxPosition = await db
-              .select({ max: sql<number>`MAX(${wordSegments.positionInSegment})` })
-              .from(wordSegments)
-              .where(eq(wordSegments.audioSegmentId, segmentId))
-            position = (maxPosition[0]?.max || 0) + 1
-          }
+          // Calculate position
+          const positionResult = await db
+            .select({ 
+              maxPosition: sql<number>`COALESCE(MAX(${wordSegments.positionInSegment}), 0)`
+            })
+            .from(wordSegments)
+            .where(eq(wordSegments.audioSegmentId, segmentId))
+
+          const position = (positionResult[0]?.maxPosition ?? 0) + 1
 
           // Add the word
           const [result] = await db
@@ -2525,7 +2534,7 @@ export class VideoController implements Routes {
               word: body.word,
               startTime,
               endTime,
-              confidenceScore: Math.round(body.confidenceScore * 1000), // Store as integer 0-1000
+              confidenceScore: Math.round(body.confidenceScore * 1000),
               positionInSegment: position
             })
             .returning({
@@ -2534,17 +2543,16 @@ export class VideoController implements Routes {
               word: wordSegments.word,
               startTime: wordSegments.startTime,
               endTime: wordSegments.endTime,
-              confidenceScore: wordSegments.confidenceScore,
-              positionInSegment: wordSegments.positionInSegment
+              confidenceScore: wordSegments.confidenceScore
             })
 
           return c.json({
             success: true,
             wordSegment: {
               ...result,
-              startTime: result.startTime / 1000, // Convert back to seconds
+              startTime: result.startTime / 1000,
               endTime: result.endTime / 1000,
-              confidenceScore: result.confidenceScore / 1000 // Convert back to 0-1
+              confidenceScore: result.confidenceScore / 1000
             }
           })
 
@@ -2552,244 +2560,6 @@ export class VideoController implements Routes {
           return c.json({
             success: false,
             error: `Failed to add word: ${error.message}`
-          }, 500)
-        }
-      }
-    )
-
-    // Update word
-    this.controller.openapi(
-      createRoute({
-        method: 'patch',
-        path: '/videos/{videoId}/segments/{segmentId}/words/{wordId}',
-        tags: ['Videos'],
-        summary: 'Update Word',
-        description: 'Update a word within an audio segment',
-        parameters: [
-          {
-            name: 'videoId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the video',
-            schema: { type: 'number' }
-          },
-          {
-            name: 'segmentId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the segment',
-            schema: { type: 'number' }
-          },
-          {
-            name: 'wordId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the word to update',
-            schema: { type: 'number' }
-          }
-        ],
-        request: {
-          body: {
-            content: {
-              'application/json': {
-                schema: z.object({
-                  word: z.string().optional().openapi({
-                    description: 'The word text'
-                  }),
-                  startTime: z.number().min(0).optional().openapi({
-                    description: 'Start time of the word in seconds'
-                  }),
-                  endTime: z.number().min(0).optional().openapi({
-                    description: 'End time of the word in seconds'
-                  }),
-                  confidenceScore: z.number().min(0).max(1).optional().openapi({
-                    description: 'Confidence score between 0 and 1'
-                  }),
-                  positionInSegment: z.number().int().min(1).optional().openapi({
-                    description: 'Position of the word in the segment'
-                  })
-                })
-              }
-            }
-          }
-        },
-        responses: {
-          200: {
-            description: 'Word updated successfully',
-            content: {
-              'application/json': {
-                schema: z.object({
-                  success: z.boolean(),
-                  wordSegment: z.object({
-                    id: z.number(),
-                    audioSegmentId: z.number(),
-                    word: z.string(),
-                    startTime: z.number(),
-                    endTime: z.number(),
-                    confidenceScore: z.number(),
-                    positionInSegment: z.number()
-                  })
-                })
-              }
-            },
-            description: 'Word updated successfully'
-          },
-          404: {
-            description: 'Word not found',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        const videoId = Number(c.req.param('videoId'))
-        const segmentId = Number(c.req.param('segmentId'))
-        const wordId = Number(c.req.param('wordId'))
-        
-        if (Number.isNaN(videoId) || Number.isNaN(segmentId) || Number.isNaN(wordId)) {
-          return c.json({ success: false, error: 'Invalid ID' }, 400)
-        }
-
-        try {
-          // Verify segment exists and belongs to video
-          const segment = await db
-            .select()
-            .from(audioSegments)
-            .where(
-              and(
-                eq(audioSegments.id, segmentId),
-                eq(audioSegments.videoId, videoId)
-              )
-            )
-            .limit(1)
-
-          if (!segment.length) {
-            return c.json({
-              success: false,
-              error: 'Segment not found or does not belong to this video'
-            }, 404)
-          }
-
-          // Get current word data
-          const currentWord = await db
-            .select()
-            .from(wordSegments)
-            .where(
-              and(
-                eq(wordSegments.id, wordId),
-                eq(wordSegments.audioSegmentId, segmentId)
-              )
-            )
-            .limit(1)
-
-          if (!currentWord.length) {
-            return c.json({
-              success: false,
-              error: 'Word not found or does not belong to this segment'
-            }, 404)
-          }
-
-          const body = await c.req.json()
-          const updateData: Record<string, any> = {}
-
-          if (body.word !== undefined) {
-            updateData.word = body.word
-          }
-
-          // Handle time updates
-          if (body.startTime !== undefined) {
-            updateData.startTime = body.startTime * 1000
-          }
-          if (body.endTime !== undefined) {
-            updateData.endTime = body.endTime * 1000
-          }
-
-          // Validate times if being updated
-          const newStartTime = updateData.startTime ?? currentWord[0].startTime
-          const newEndTime = updateData.endTime ?? currentWord[0].endTime
-
-          if (newStartTime >= newEndTime) {
-            return c.json({
-              success: false,
-              error: 'End time must be greater than start time'
-            }, 400)
-          }
-
-          // Validate word is within segment bounds
-          if (newStartTime < segment[0].startTime || newEndTime > segment[0].endTime) {
-            return c.json({
-              success: false,
-              error: 'Word times must be within segment bounds'
-            }, 400)
-          }
-
-          // Check for overlapping words
-          const existingWords = await db
-            .select({
-              id: wordSegments.id,
-              startTime: wordSegments.startTime,
-              endTime: wordSegments.endTime
-            })
-            .from(wordSegments)
-            .where(
-              and(
-                eq(wordSegments.audioSegmentId, segmentId),
-                not(eq(wordSegments.id, wordId))
-              )
-            )
-
-          const hasOverlap = existingWords.some(word => 
-            (newStartTime >= word.startTime && newStartTime < word.endTime) ||
-            (newEndTime > word.startTime && newEndTime <= word.endTime) ||
-            (newStartTime <= word.startTime && newEndTime >= word.endTime)
-          )
-
-          if (hasOverlap) {
-            return c.json({
-              success: false,
-              error: 'Updated word would overlap with existing words'
-            }, 400)
-          }
-
-          if (body.confidenceScore !== undefined) {
-            updateData.confidenceScore = Math.round(body.confidenceScore * 1000)
-          }
-          
-          if (body.positionInSegment !== undefined) {
-            updateData.positionInSegment = body.positionInSegment
-          }
-
-          const [updated] = await db
-            .update(wordSegments)
-            .set(updateData)
-            .where(eq(wordSegments.id, wordId))
-            .returning({
-              id: wordSegments.id,
-              audioSegmentId: wordSegments.audioSegmentId,
-              word: wordSegments.word,
-              startTime: wordSegments.startTime,
-              endTime: wordSegments.endTime,
-              confidenceScore: wordSegments.confidenceScore,
-              positionInSegment: wordSegments.positionInSegment
-            })
-
-          return c.json({
-            success: true,
-            wordSegment: {
-              ...updated,
-              startTime: updated.startTime / 1000,
-              endTime: updated.endTime / 1000,
-              confidenceScore: updated.confidenceScore / 1000
-            }
-          })
-
-        } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to update word: ${error.message}`
           }, 500)
         }
       }
@@ -2855,7 +2625,7 @@ export class VideoController implements Routes {
         }
 
         try {
-          // Verify segment exists and belongs to video before deleting word
+          // Verify segment exists and belongs to video
           const segment = await db
             .select()
             .from(audioSegments)
@@ -2911,7 +2681,7 @@ export class VideoController implements Routes {
         method: 'patch',
         path: '/videos/{videoId}/segments/{segmentId}/translation',
         tags: ['Videos'],
-        summary: 'Update Segment Translation', 
+        summary: 'Update Segment Translation',
         description: 'Update or add translation for a segment',
         parameters: [
           {
@@ -3022,9 +2792,9 @@ export class VideoController implements Routes {
       createRoute({
         method: 'patch',
         path: '/videos/{videoId}/segments/{segmentId}/timing',
-        tags: ['Videos'],
+               tags: ['Videos'],
         summary: 'Update Segment Timing',
-        description: 'Update timing, confidence scores, and metadata for a segment',
+        description: 'Update timing for a segment and its words',
         parameters: [
           {
             name: 'videoId',
@@ -3057,8 +2827,7 @@ export class VideoController implements Routes {
                       id: z.number(),
                       startTime: z.number().min(0),
                       endTime: z.number().min(0),
-                      confidenceScore: z.number().min(0).max(1),
-                      positionInSegment: z.number().int().min(1).optional()
+                      confidenceScore: z.number().min(0).max(1)
                     })
                   ).optional().openapi({
                     description: 'Updated timing for words in the segment'
@@ -3083,8 +2852,7 @@ export class VideoController implements Routes {
                       id: z.number(),
                       startTime: z.number(),
                       endTime: z.number(),
-                      confidenceScore: z.number(),
-                      positionInSegment: z.number()
+                      confidenceScore: z.number()
                     }))
                   })
                 })
@@ -3119,14 +2887,14 @@ export class VideoController implements Routes {
 
         try {
           const body = await c.req.json()
-          const startTime = body.startTime * 1000
+          const startTime = body.startTime * 1000 // Convert to milliseconds
           const endTime = body.endTime * 1000
 
-          // Validate segment times
+          // Validate times
           if (startTime >= endTime) {
             return c.json({
               success: false,
-              error: 'Segment end time must be greater than start time'
+              error: 'End time must be greater than start time'
             }, 400)
           }
 
@@ -3158,8 +2926,7 @@ export class VideoController implements Routes {
             }, 400)
           }
 
-          // Start a transaction to update both segment and words
-          const result = await db.transaction(async (tx) => {
+          let result = await db.transaction(async (tx) => {
             // Update segment timing
             const [updatedSegment] = await tx
               .update(audioSegments)
@@ -3183,43 +2950,25 @@ export class VideoController implements Routes {
               throw new Error('Segment not found')
             }
 
-            // Update word timings if provided
             let updatedWords = []
+
             if (body.words && body.words.length > 0) {
               // Validate word times are within segment bounds
-              const invalidWords = body.words.filter(word =>
-                word.startTime * 1000 < startTime || 
-                word.endTime * 1000 > endTime
-              )
-
-              if (invalidWords.length > 0) {
-                throw new Error('Word times must be within segment bounds')
-              }
-
-              // Check for overlapping words
-              for (let i = 0; i < body.words.length; i++) {
-                for (let j = i + 1; j < body.words.length; j++) {
-                  const word1 = body.words[i]
-                  const word2 = body.words[j]
-                  if (
-                    (word1.startTime >= word2.startTime && word1.startTime < word2.endTime) ||
-                    (word1.endTime > word2.startTime && word1.endTime <= word2.endTime) ||
-                    (word1.startTime <= word2.startTime && word1.endTime >= word2.endTime)
-                  ) {
-                    throw new Error('Word timings cannot overlap')
-                  }
-                }
-              }
-
-              // Update each word
               for (const word of body.words) {
-                const [updated] = await tx
+                const wordStartTime = word.startTime * 1000
+                const wordEndTime = word.endTime * 1000
+
+                if (wordStartTime < startTime || wordEndTime > endTime) {
+                  throw new Error('Word times must be within segment bounds')
+                }
+
+                // Update the word
+                const [updatedWord] = await tx
                   .update(wordSegments)
                   .set({
-                    startTime: word.startTime * 1000,
-                    endTime: word.endTime * 1000,
-                    confidenceScore: Math.round(word.confidenceScore * 1000),
-                    ...(word.positionInSegment && { positionInSegment: word.positionInSegment })
+                    startTime: wordStartTime,
+                    endTime: wordEndTime,
+                    confidenceScore: Math.round(word.confidenceScore * 1000)
                   })
                   .where(
                     and(
@@ -3231,14 +2980,14 @@ export class VideoController implements Routes {
                     id: wordSegments.id,
                     startTime: wordSegments.startTime,
                     endTime: wordSegments.endTime,
-                    confidenceScore: wordSegments.confidenceScore,
-                    positionInSegment: wordSegments.positionInSegment
+                    confidenceScore: wordSegments.confidenceScore
                   })
 
-                if (!updated) {
+                if (!updatedWord) {
                   throw new Error(`Word with ID ${word.id} not found`)
                 }
-                updatedWords.push(updated)
+
+                updatedWords.push(updatedWord)
               }
             }
 
@@ -3252,11 +3001,11 @@ export class VideoController implements Routes {
           return c.json({
             success: true,
             segment: {
-              ...result.segment,
+              id: result.segment.id,
               startTime: result.segment.startTime / 1000,
               endTime: result.segment.endTime / 1000,
               words: result.words.map(word => ({
-                ...word,
+                id: word.id,
                 startTime: word.startTime / 1000,
                 endTime: word.endTime / 1000,
                 confidenceScore: word.confidenceScore / 1000
