@@ -512,8 +512,6 @@ export class VideoController implements Routes {
 
     // Récupérer toutes les vidéos avec leurs segments audio et word segments
     this.controller.get('/videos', async (c) => {
-
-
       const result = await db
         .select({
           video: {
@@ -844,7 +842,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         try {
           // Supprimer d'abord les données associées (segments, exercices, etc.)
           await db.delete(audioSegments)
@@ -1013,7 +1011,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c:any) => {
+      async (c: any) => {
         try {
           // Supprimer d'abord les données associées (segments, exercices, etc.)
           await db.delete(audioSegments)
@@ -1043,7 +1041,6 @@ export class VideoController implements Routes {
         }
       }
     )
-
   }
 
   private renderHomePage() {
@@ -1101,7 +1098,7 @@ export class VideoController implements Routes {
           <div class="container">
             <h1>🚀 API Documentation</h1>
             <p class="description">Access the documentation and API references for the Audio Processing System</p>
-            
+
             <div class="links">
               <a href="/docs" class="link-button">📚 Documentation</a>
               <a href="/api/auth/reference" class="link-button">🔧 API Reference</a>
