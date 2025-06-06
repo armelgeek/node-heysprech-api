@@ -512,36 +512,7 @@ export class VideoController implements Routes {
 
     // Récupérer toutes les vidéos avec leurs segments audio et word segments
     this.controller.get('/videos', async (c) => {
-      type VideoRow = {
-        video: {
-          id: number
-          title: string
-          originalFilename: string
-          filePath: string
-          fileSize: number
-          duration: number
-          language: string
-          transcriptionStatus: string
-          createdAt: Date
-          updatedAt: Date
-        }
-        audioSegment: {
-          id: number
-          startTime: number
-          endTime: number
-          text: string
-          translation: string | null
-          language: string
-        } | null
-        wordSegment: {
-          id: number
-          word: string
-          startTime: number
-          endTime: number
-          confidenceScore: number
-          positionInSegment: number
-        } | null
-      }
+
 
       const result = await db
         .select({
@@ -788,7 +759,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c) => {
+      async (c: any) => {
         try {
           // Supprimer les données associées dans l'ordre pour respecter les contraintes de clés étrangères
           await db.delete(exerciseOptions)
@@ -873,7 +844,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c) => {
+      async (c:any) => {
         try {
           // Supprimer d'abord les données associées (segments, exercices, etc.)
           await db.delete(audioSegments)
@@ -1042,7 +1013,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c) => {
+      async (c:any) => {
         try {
           // Supprimer d'abord les données associées (segments, exercices, etc.)
           await db.delete(audioSegments)
