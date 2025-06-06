@@ -63,6 +63,7 @@ jobs:
             rm -rf node_modules package-lock.json
 
             bun install
+            bun run build
             pm2 delete heysprech-api || true
-            PORT=5000 pm2 start bun --name heysprech-api -- run start
+            PORT=5000 pm2 start bun --name heysprech-api -- run prod
             pm2 save
