@@ -15,6 +15,7 @@ export const videos = pgTable('videos', {
   transcriptionStatus: transcriptionStatusEnum('transcription_status').default('pending'),
   queueJobId: varchar('queue_job_id', { length: 255 }),
   errorMessage: text('error_message'),
+  youtubeId: varchar('youtube_id', { length: 11 }),
   tempInfoFile: varchar('temp_info_file', { length: 1000 }),
   transcriptionFile: varchar('transcription_file', { length: 1000 }),
   createdAt: timestamp('created_at').defaultNow(),

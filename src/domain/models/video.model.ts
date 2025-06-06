@@ -74,6 +74,7 @@ export const VideoSchema = z.object({
   filePath: z.string(),
   fileSize: z.number(),
   language: z.string().default('de'),
+  youtubeId: z.string().length(11).optional(),
   transcriptionStatus: z.enum(['pending', 'processing', 'completed', 'failed']).default('pending'),
   queueJobId: z.string().optional(),
   errorMessage: z.string().optional(),
@@ -115,6 +116,10 @@ export class VideoModel {
 
   get language() {
     return this.data.language
+  }
+
+  get youtubeId() {
+    return this.data.youtubeId
   }
 
   get transcriptionStatus() {

@@ -37,6 +37,7 @@ export class VideoService {
     options: {
       language?: string
       title?: string
+      youtubeId?: string
     } = {}
   ): Promise<VideoModel> {
     const tempInfoFile = path.join('temp', `info_${Date.now()}.txt`)
@@ -57,6 +58,7 @@ export class VideoService {
       filePath: file.path,
       fileSize: file.size,
       language: options.language || 'de',
+      youtubeId: options.youtubeId,
       tempInfoFile,
       transcriptionStatus: 'pending'
     })

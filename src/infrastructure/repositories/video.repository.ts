@@ -625,6 +625,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       errorMessage: dbVideo.errorMessage || undefined,
       tempInfoFile: dbVideo.tempInfoFile || undefined,
       transcriptionFile: dbVideo.transcriptionFile || undefined,
+      youtubeId: dbVideo.youtubeId || undefined,
       createdAt: dbVideo.createdAt || undefined,
       updatedAt: dbVideo.updatedAt || undefined,
       processedAt: dbVideo.processedAt || undefined

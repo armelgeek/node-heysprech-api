@@ -66,6 +66,10 @@ const uploadRequestSchema = z.object({
     description: 'Optional title for the audio file',
     example: 'My Audio File'
   }),
+  youtubeId: z.string().length(11).optional().openapi({
+    description: 'Optional YouTube video ID for reference',
+    example: 'dQw4w9WgXcQ'
+  }),
   audioFile: z.custom<File>().openapi({
     type: 'string',
     format: 'binary',
@@ -181,7 +185,8 @@ export class VideoController implements Routes {
 
           const formData = {
             language: body.language as string,
-            title: body.title as string | undefined
+            title: body.title as string | undefined,
+            youtubeId: body.youtubeId as string | undefined
           }
 
           const result = uploadRequestSchema.safeParse(formData)
