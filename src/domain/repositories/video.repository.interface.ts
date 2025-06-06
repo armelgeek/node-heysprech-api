@@ -64,4 +64,9 @@ export interface VideoRepositoryInterface {
    * Get a list of completed segment IDs for a user
    */
   getCompletedSegments: (videoId: number, userId: string) => Promise<number[]>
+
+  /**
+   * Delete all videos and associated data from the database
+   */
+  deleteAllVideos: () => Promise<void>
 }

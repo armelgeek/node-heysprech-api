@@ -238,7 +238,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     }
 
     const wordData = videoData.vocabulary.get(rowWords.word)
-    this.updateWordData(wordData, rowWords, exercise, exerciseQuestion, exerciseOption, pronunciation)
+    this.updateWordData(wordData, rowWords, exercise, exerciseQuestion, option, pronunciation)
   }
 
   private createWordData(word: any) {
@@ -435,6 +435,20 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
 
   async deleteVideo(id: number): Promise<void> {
     await db.delete(videos).where(eq(videos.id, id))
+  }
+
+  async deleteAllVideos(): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Delete associated data in order to respect foreign key constraints
+      await tx.delete(exerciseOptions)
+      await tx.delete(exerciseQuestions)
+      await tx.delete(exercises)
+      await tx.delete(pronunciations)
+      await tx.delete(wordEntries)
+      await tx.delete(wordSegments)
+      await tx.delete(audioSegments)
+      await tx.delete(videos)
+    })
   }
 
   async insertAudioSegments(segments: VideoSegment[], videoId: number, language: string): Promise<number[]> {
