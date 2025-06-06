@@ -41,7 +41,6 @@ export class ProcessingQueue {
         host: process.env.REDIS_HOST || 'localhost',
         port: Number.parseInt(process.env.REDIS_PORT || '6379'),
         // Ajout de la gestion des erreurs Redis
-        retryDelayOnFailover: 100,
         enableReadyCheck: false,
         maxRetriesPerRequest: 3
       },
