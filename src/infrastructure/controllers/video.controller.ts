@@ -42,6 +42,8 @@ const videoSchema = z
     duration: z.number().optional(),
     youtubeId: z.string().length(11).optional(),
     language: z.string(),
+    categoryId: z.number().optional(),
+    difficultyId: z.number().optional(),
     transcriptionStatus: z.enum(['pending', 'processing', 'completed', 'failed']),
     errorMessage: z.string().optional(),
     createdAt: z.string(),
@@ -71,6 +73,14 @@ const uploadRequestSchema = z.object({
   youtubeId: z.string().length(11).optional().openapi({
     description: 'Optional YouTube video ID for reference',
     example: 'dQw4w9WgXcQ'
+  }),
+  categoryId: z.number().optional().openapi({
+    description: 'Optional category ID to assign to the video',
+    example: 1
+  }),
+  difficultyId: z.number().optional().openapi({
+    description: 'Optional difficulty level ID to assign to the video',
+    example: 1
   }),
   audioFile: z.custom<File>().openapi({
     type: 'string',
@@ -188,7 +198,9 @@ export class VideoController implements Routes {
           const formData = {
             language: body.language as string,
             title: body.title as string | undefined,
-            youtubeId: body.youtubeId as string | undefined
+            youtubeId: body.youtubeId as string | undefined,
+            categoryId: body.categoryId ? Number(body.categoryId) : undefined,
+            difficultyId: body.difficultyId ? Number(body.difficultyId) : undefined
           }
 
           const result = uploadRequestSchema.safeParse(formData)
@@ -197,6 +209,27 @@ export class VideoController implements Routes {
               {
                 success: false,
                 error: `Invalid data: ${result.error.message}`
+              },
+              400
+            )
+          }
+
+          // Validate category and difficulty IDs if provided
+          if (formData.categoryId && Number.isNaN(formData.categoryId)) {
+            return c.json(
+              {
+                success: false,
+                error: 'Invalid category ID'
+              },
+              400
+            )
+          }
+
+          if (formData.difficultyId && Number.isNaN(formData.difficultyId)) {
+            return c.json(
+              {
+                success: false,
+                error: 'Invalid difficulty ID'
               },
               400
             )
@@ -233,7 +266,10 @@ export class VideoController implements Routes {
 
           const video = await this.videoService.uploadVideo(videoFile, {
             language: formData.language,
-            title: formData.title
+            title: formData.title,
+            youtubeId: formData.youtubeId,
+            categoryId: formData.categoryId,
+            difficultyId: formData.difficultyId
           })
 
           return c.json({
@@ -499,18 +535,21 @@ export class VideoController implements Routes {
         try {
           const videos = await this.videoService.getRecentVideos(10)
           return c.json(
-            videos.map((v) => ({
-              id: v.id,
-              title: v.title,
-              originalFilename: v.originalFilename,
-              duration: v.duration,
-              youtubeId: v.youtubeId,
-              language: v.language,
-              transcriptionStatus: v.transcriptionStatus,
-              errorMessage: v.errorMessage,
-              createdAt: v.createdAt,
-              processedAt: v.processedAt
-            }))
+            videos.map((v) => {
+              const video = v.toJSON()
+              return {
+                id: video.id,
+                title: video.title,
+                originalFilename: video.originalFilename,
+                duration: video.duration,
+                youtubeId: video.youtubeId,
+                language: video.language,
+                transcriptionStatus: video.transcriptionStatus,
+                errorMessage: video.errorMessage,
+                createdAt: video.createdAt,
+                processedAt: video.processedAt
+              }
+            })
           )
         } catch (error: any) {
           console.error('Error fetching recent videos:', error.message)
@@ -519,7 +558,6 @@ export class VideoController implements Routes {
       }
     )
 
-    // Récupérer toutes les vidéos avec leurs segments audio et word segments
     this.controller.get('/videos', async (c) => {
       const result = await db
         .select({
@@ -1049,6 +1087,171 @@ export class VideoController implements Routes {
             },
             500
           )
+        }
+      }
+    )
+
+    this.controller.openapi(
+      createRoute({
+        method: 'patch',
+        path: '/videos/{id}/categorize',
+        tags: ['Videos'],
+        summary: 'Update Video Category and Difficulty',
+        description: 'Update the category and difficulty level of a video',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'The ID of the video to update',
+            schema: { type: 'number' }
+          }
+        ],
+        request: {
+          body: {
+            content: {
+              'application/json': {
+                schema: z.object({
+                  categoryId: z.number().optional().openapi({
+                    description: 'The ID of the category to assign to the video'
+                  }),
+                  difficultyId: z.number().optional().openapi({
+                    description: 'The ID of the difficulty level to assign to the video'
+                  })
+                })
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: videoSchema
+              }
+            },
+            description: 'Video categorization updated successfully'
+          },
+          400: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Invalid request data'
+          },
+          404: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Video not found'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c: any) => {
+        const id = Number.parseInt(c.req.param('id'))
+        if (Number.isNaN(id)) {
+          return c.json({ success: false, error: 'Invalid video ID' }, 400)
+        }
+
+        try {
+          const body = await c.req.json()
+          const video = await this.videoService.updateVideoCategory(id, {
+            categoryId: body.categoryId,
+            difficultyId: body.difficultyId
+          })
+
+          if (!video) {
+            return c.json({ success: false, error: 'Video not found' }, 404)
+          }
+
+          return c.json(video)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
+      }
+    )
+
+    this.controller.openapi(
+      createRoute({
+        method: 'get',
+        path: '/videos/filter',
+        tags: ['Videos'],
+        summary: 'Filter Videos',
+        description: 'Filter videos by category and difficulty level',
+        parameters: [
+          {
+            name: 'categoryId',
+            in: 'query',
+            required: false,
+            description: 'Filter by video category ID',
+            schema: { type: 'number' }
+          },
+          {
+            name: 'difficultyId',
+            in: 'query',
+            required: false,
+            description: 'Filter by difficulty level ID',
+            schema: { type: 'number' }
+          }
+        ],
+        responses: {
+          200: {
+            content: {
+              'application/json': {
+                schema: z.array(videoSchema)
+              }
+            },
+            description: 'List of filtered videos'
+          },
+          400: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Invalid request data'
+          },
+          500: {
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            },
+            description: 'Server error'
+          }
+        }
+      }),
+      async (c: any) => {
+        try {
+          const categoryId = c.req.query('categoryId') ? Number(c.req.query('categoryId')) : undefined
+          const difficultyId = c.req.query('difficultyId') ? Number(c.req.query('difficultyId')) : undefined
+
+          if (
+            (categoryId !== undefined && Number.isNaN(categoryId)) ||
+            (difficultyId !== undefined && Number.isNaN(difficultyId))
+          ) {
+            return c.json({ success: false, error: 'Invalid category or difficulty ID' }, 400)
+          }
+
+          const videos = await this.videoService.getFilteredVideos({
+            categoryId,
+            difficultyId
+          })
+
+          return c.json(videos)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
         }
       }
     )

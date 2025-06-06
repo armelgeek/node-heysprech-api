@@ -38,6 +38,8 @@ export class VideoService {
       language?: string
       title?: string
       youtubeId?: string
+      categoryId?: number
+      difficultyId?: number
     } = {}
   ): Promise<VideoModel> {
     const tempInfoFile = path.join('temp', `info_${Date.now()}.txt`)
@@ -47,33 +49,31 @@ export class VideoService {
       fileSize: file.size,
       language: options.language || 'de',
       title: options.title || file.originalname,
-      uploadedAt: new Date().toISOString()
+      uploadedAt: new Date().toISOString(),
+      categoryId: options.categoryId,
+      difficultyId: options.difficultyId
     }
 
     await fs.writeFile(tempInfoFile, JSON.stringify(videoInfo, null, 2))
 
-    const videoId = await this.videoRepository.insertVideo({
+    const video = await this.createVideo({
       title: options.title || file.originalname,
       originalFilename: file.originalname,
-      filePath: file.path,
-      fileSize: file.size,
-      language: options.language || 'de',
-      youtubeId: options.youtubeId,
-      tempInfoFile,
-      transcriptionStatus: 'pending'
+      path: file.path,
+      size: file.size,
+      language: options.language,
+      categoryId: options.categoryId,
+      difficultyId: options.difficultyId
     })
 
-    const job = await this.queue.addVideo({
-      videoId,
-      audioPath: file.path
-    })
-
-    const video = await this.videoRepository.getVideoById(videoId)
     if (video) {
-      await this.videoRepository.updateVideoStatus(videoId, 'pending', {
-        jobId: job.id.toString()
+      await this.queue.addVideo({
+        videoId: video.id!,
+        audioPath: file.path
       })
-      await this.videoRepository.logProcessingStep(videoId, 'upload', 'completed', `Fichier: ${file.originalname}`)
+
+      await this.videoRepository.updateVideoStatus(video.id!, 'pending')
+      await this.videoRepository.logProcessingStep(video.id!, 'upload', 'completed', `Fichier: ${file.originalname}`)
     }
 
     return video!
@@ -131,5 +131,52 @@ export class VideoService {
 
   async cleanQueue(): Promise<void> {
     await this.queue.cleanQueue()
+  }
+
+  async updateVideoCategory(
+    id: number,
+    data: {
+      categoryId?: number
+      difficultyId?: number
+    }
+  ): Promise<VideoModel | null> {
+    await this.videoRepository.updateVideoCategory(id, data)
+    return this.videoRepository.getVideoById(id)
+  }
+
+  getVideoCategories(videoId: number): Promise<{ categoryIds: number[]; difficultyId?: number }> {
+    return this.videoRepository.getVideoCategories(videoId)
+  }
+
+  getFilteredVideos(filters: { categoryId?: number; difficultyId?: number }): Promise<VideoModel[]> {
+    return this.videoRepository.getFilteredVideos(filters)
+  }
+
+  async createVideo(data: {
+    title: string
+    originalFilename: string
+    path: string
+    size: number
+    language?: string
+    categoryId?: number
+    difficultyId?: number
+  }): Promise<VideoModel | null> {
+    const videoId = await this.videoRepository.insertVideo({
+      title: data.title,
+      originalFilename: data.originalFilename,
+      filePath: data.path,
+      fileSize: data.size,
+      language: data.language || 'de',
+      transcriptionStatus: 'pending'
+    })
+
+    if (data.categoryId || data.difficultyId) {
+      await this.videoRepository.updateVideoCategory(videoId, {
+        categoryId: data.categoryId,
+        difficultyId: data.difficultyId
+      })
+    }
+
+    return this.videoRepository.getVideoById(videoId)
   }
 }

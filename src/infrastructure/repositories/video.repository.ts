@@ -1,10 +1,11 @@
 import { promises as fs } from 'node:fs'
-import { eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { VideoModel, type Video } from '@/domain/models/video.model'
 import { ExerciseDataSchema, PronunciationSchema } from '@/domain/types/exercise.types'
 import type { VideoRepositoryInterface, VideoSegment } from '@/domain/repositories/video.repository.interface'
 import { db } from '../database/db'
+import { difficultyLevels, videoCategories } from '../database/schema/category.schema'
 import {
   exerciseOptions,
   exerciseQuestions,
@@ -12,6 +13,7 @@ import {
   pronunciations,
   wordEntries
 } from '../database/schema/exercise.schema'
+import { videoToCategoryMap, videoToDifficultyMap } from '../database/schema/video-category.schema'
 import { audioSegments, processingLogs, videos, wordSegments } from '../database/schema/video.schema'
 import { BaseRepository } from './base.repository'
 import type { PgTransaction } from 'drizzle-orm/pg-core'
@@ -42,11 +44,12 @@ interface Exercise {
 export class VideoRepository extends BaseRepository<typeof videos> implements VideoRepositoryInterface {
   constructor() {
     super(videos)
-  }  private validateTime(time: unknown): number {
+  }
+  private validateTime(time: unknown): number {
     const num = Number(time)
     // Convert decimal seconds to milliseconds, ensuring proper handling of decimal values
     return Number.isNaN(num) ? 0 : Math.round(num * 1000)
-}
+  }
 
   private validateScore(score: unknown): number {
     const num = Number(score)
@@ -54,20 +57,42 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   }
 
   async insertVideo(videoData: Omit<Video, 'id'>): Promise<number> {
-    const [result] = await db
-      .insert(videos)
-      .values({
-        title: videoData.title,
-        originalFilename: videoData.originalFilename,
-        filePath: videoData.filePath,
-        fileSize: videoData.fileSize,
-        language: videoData.language || 'de',
-        transcriptionStatus: 'pending',
-        tempInfoFile: videoData.tempInfoFile
-      })
-      .returning({ id: videos.id })
+    let videoId: number
 
-    return result.id
+    await db.transaction(async (tx) => {
+      const [result] = await tx
+        .insert(videos)
+        .values({
+          title: videoData.title,
+          originalFilename: videoData.originalFilename,
+          filePath: videoData.filePath,
+          fileSize: videoData.fileSize,
+          language: videoData.language || 'de',
+          transcriptionStatus: 'pending',
+          tempInfoFile: videoData.tempInfoFile
+        })
+        .returning({ id: videos.id })
+
+      videoId = result.id
+
+      // Add category mapping if specified
+      if (videoData.categoryId !== undefined) {
+        await tx.insert(videoToCategoryMap).values({
+          videoId,
+          categoryId: videoData.categoryId
+        })
+      }
+
+      // Add difficulty mapping if specified
+      if (videoData.difficultyId !== undefined) {
+        await tx.insert(videoToDifficultyMap).values({
+          videoId,
+          difficultyId: videoData.difficultyId
+        })
+      }
+    })
+
+    return videoId!
   }
 
   async updateVideoStatus(
@@ -218,8 +243,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   private createWordData(word: any) {
     return {
       word: word.word,
-      startTime: this.validateTime(word.startTime) / 1000,  // Convert milliseconds back to seconds for display
-      endTime: this.validateTime(word.endTime) / 1000,      // Convert milliseconds back to seconds for display
+      startTime: this.validateTime(word.startTime) / 1000, // Convert milliseconds back to seconds for display
+      endTime: this.validateTime(word.endTime) / 1000, // Convert milliseconds back to seconds for display
       confidenceScore: word.confidenceScore / 1000
     }
   }
@@ -619,7 +644,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
       originalFilename: dbVideo.originalFilename,
       filePath: dbVideo.filePath,
       fileSize: dbVideo.fileSize || 0,
-      duration: dbVideo.duration,
+      duration: dbVideo.duration ?? undefined,
       language: dbVideo.language,
       transcriptionStatus: dbVideo.transcriptionStatus ?? 'pending',
       queueJobId: dbVideo.queueJobId || undefined,
@@ -673,5 +698,103 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
 
       await tx.insert(pronunciations).values(pronunciationValues)
     })
+  }
+
+  private async validateVideoId(tx: PgTransaction<any, any, any>, videoId: number): Promise<void> {
+    const video = await tx.select().from(videos).where(eq(videos.id, videoId)).limit(1)
+
+    if (!video.length) {
+      throw new Error(`Video with ID ${videoId} not found`)
+    }
+  }
+
+  private async validateCategoryId(tx: PgTransaction<any, any, any>, categoryId: number): Promise<void> {
+    const category = await tx.select().from(videoCategories).where(eq(videoCategories.id, categoryId)).limit(1)
+
+    if (!category.length) {
+      throw new Error(`Category with ID ${categoryId} not found`)
+    }
+  }
+
+  private async validateDifficultyId(tx: PgTransaction<any, any, any>, difficultyId: number): Promise<void> {
+    const difficulty = await tx.select().from(difficultyLevels).where(eq(difficultyLevels.id, difficultyId)).limit(1)
+
+    if (!difficulty.length) {
+      throw new Error(`Difficulty level with ID ${difficultyId} not found`)
+    }
+  }
+
+  async updateVideoCategory(
+    videoId: number,
+    data: {
+      categoryId?: number
+      difficultyId?: number
+    }
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      await this.validateVideoId(tx, videoId)
+
+      if (data.categoryId !== undefined) {
+        await this.validateCategoryId(tx, data.categoryId)
+        await tx.delete(videoToCategoryMap).where(eq(videoToCategoryMap.videoId, videoId))
+        await tx.insert(videoToCategoryMap).values({ videoId, categoryId: data.categoryId })
+      }
+
+      if (data.difficultyId !== undefined) {
+        await this.validateDifficultyId(tx, data.difficultyId)
+        await tx.delete(videoToDifficultyMap).where(eq(videoToDifficultyMap.videoId, videoId))
+        await tx.insert(videoToDifficultyMap).values({ videoId, difficultyId: data.difficultyId })
+      }
+    })
+  }
+
+  async getFilteredVideos(filters: { categoryId?: number; difficultyId?: number }): Promise<VideoModel[]> {
+    let query = db
+      .select({
+        video: videos,
+        category: videoCategories,
+        difficulty: difficultyLevels
+      })
+      .from(videos)
+      .leftJoin(videoToCategoryMap, eq(videos.id, videoToCategoryMap.videoId))
+      .leftJoin(videoCategories, eq(videoToCategoryMap.categoryId, videoCategories.id))
+      .leftJoin(videoToDifficultyMap, eq(videos.id, videoToDifficultyMap.videoId))
+      .leftJoin(difficultyLevels, eq(videoToDifficultyMap.difficultyId, difficultyLevels.id))
+
+    const conditions = []
+
+    if (filters.categoryId !== undefined) {
+      conditions.push(eq(videoCategories.id, filters.categoryId))
+    }
+
+    if (filters.difficultyId !== undefined) {
+      conditions.push(eq(difficultyLevels.id, filters.difficultyId))
+    }
+
+    if (conditions.length > 0) {
+      query = (query as any).where(and(...conditions))
+    }
+
+    const results = await query.orderBy(desc(videos.createdAt))
+    return results.map(({ video }) => new VideoModel(this.mapVideoFromDb(video)))
+  }
+
+  async getVideoCategories(videoId: number): Promise<{ categoryIds: number[]; difficultyId?: number }> {
+    const result = await db
+      .select({
+        categoryId: videoCategories.id,
+        difficultyId: difficultyLevels.id
+      })
+      .from(videos)
+      .where(eq(videos.id, videoId))
+      .leftJoin(videoToCategoryMap, eq(videos.id, videoToCategoryMap.videoId))
+      .leftJoin(videoCategories, eq(videoToCategoryMap.categoryId, videoCategories.id))
+      .leftJoin(videoToDifficultyMap, eq(videos.id, videoToDifficultyMap.videoId))
+      .leftJoin(difficultyLevels, eq(videoToDifficultyMap.difficultyId, difficultyLevels.id))
+
+    return {
+      categoryIds: result.map((r) => r.categoryId).filter((id): id is number => id !== null),
+      difficultyId: result[0]?.difficultyId ?? undefined
+    }
   }
 }
