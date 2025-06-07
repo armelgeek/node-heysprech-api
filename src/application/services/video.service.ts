@@ -230,4 +230,25 @@ export class VideoService {
       progress
     }
   }
+
+  async deleteAllVideos(): Promise<void> {
+    // Get all videos first to clean up files
+    const videos = await this.videoRepository.getRecentVideos(1000) // Using a high limit to get all videos
+
+    // Clean up all video files first
+    for (const video of videos) {
+      const filesToDelete = [video.filePath, video.transcriptionFile, video.tempInfoFile].filter(Boolean)
+
+      for (const filePath of filesToDelete) {
+        try {
+          await fs.unlink(filePath!)
+        } catch (error) {
+          console.warn(`File ${filePath} already deleted or not found:`, error)
+        }
+      }
+    }
+
+    // Now delete all database records in a single transaction
+    await this.videoRepository.deleteAllVideos()
+  }
 }

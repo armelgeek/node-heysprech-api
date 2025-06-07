@@ -1,97 +1,142 @@
-# HeySprecht - Plateforme d'apprentissage de l'allemand par la vidéo
+# HeySprecht - Apprendre l'allemand avec des vidéos
 
-## Vue d'ensemble
+## Comment ça marche ?
 
-HeySprecht est une plateforme innovante d'apprentissage de l'allemand qui utilise des vidéos comme support principal d'apprentissage. Le système combine la compréhension audiovisuelle, le vocabulaire contextualisé et des exercices interactifs pour créer une expérience d'apprentissage immersive.
+HeySprecht vous aide à apprendre l'allemand en regardant des vidéos intéressantes. C'est simple :
+1. Vous choisissez une vidéo qui vous plaît
+2. Vous la regardez avec des sous-titres en allemand et en français
+3. Vous apprenez de nouveaux mots en contexte
+4. Vous faites des exercices pour vous entraîner
+5. Vous suivez vos progrès et gagnez des points
 
-## Processus d'apprentissage
+## Ce que vous pouvez faire
 
-### 1. Apprentissage par vidéo
+### 1. Regarder des vidéos
 
-#### Phase de visionnage
-- Les utilisateurs peuvent regarder des vidéos en allemand
-- Les vidéos sont catégorisées par niveau de difficulté (débutant, intermédiaire, avancé)
-- Chaque vidéo est accompagnée de sous-titres en allemand et en français
-- Le système suit automatiquement la progression du visionnage
+#### Choisir votre vidéo
 
-#### Segmentation intelligente
-- Les vidéos sont découpées en segments courts pour faciliter l'apprentissage
-- Chaque segment contient des mots clés identifiés
-- Les utilisateurs peuvent revoir des segments spécifiques
+Vous pouvez :
+- Parcourir notre bibliothèque de vidéos en allemand
+- Choisir selon votre niveau (débutant, intermédiaire, avancé)
+- Voir la durée et le thème de chaque vidéo
+- Reprendre là où vous vous étiez arrêté
 
-### 2. Acquisition du vocabulaire
+#### Apprendre par petits morceaux
 
-#### Extraction contextuelle
-- Les mots importants sont extraits automatiquement des vidéos
-- Chaque mot est présenté dans son contexte d'utilisation
-- Les traductions sont fournies avec des exemples
+Pour mieux apprendre :
+- Les vidéos sont divisées en petites parties de 1-2 minutes
+- Vous pouvez revoir chaque partie autant de fois que vous voulez
+- Les mots importants sont mis en évidence
+- Vous avez les sous-titres en allemand et en français
 
-#### Système de révision espacée
-- Les mots appris sont intégrés à un système de révision intelligente
-- Les intervalles de révision s'adaptent au niveau de maîtrise
-- 5 niveaux de maîtrise pour chaque mot :
-  * Niveau 1 : Révision après 1 jour
-  * Niveau 2 : Révision après 3 jours
-  * Niveau 3 : Révision après 1 semaine
-  * Niveau 4 : Révision après 2 semaines
-  * Niveau 5 : Révision après 1 mois
+### 2. Apprendre du vocabulaire
 
-### 3. Exercices et évaluation
+#### Découvrir des nouveaux mots
 
-#### Types d'exercices
-- Exercices de traduction (allemand vers français et inversement)
-- Questions de compréhension sur les segments vidéo
-- Exercices de prononciation
+Le système vous aide à apprendre :
+- Les mots importants sont surlignés dans les vidéos
+- Vous voyez directement comment ils sont utilisés
+- Vous avez la traduction et des exemples d'utilisation
+- Vous pouvez créer votre liste personnelle de mots
 
-#### Système de progression
-- Gain de points d'expérience (XP) pour chaque activité complétée
-- Niveaux débloqués progressivement
-- Suivi des séries d'apprentissage quotidiennes (streaks)
+#### Réviser intelligemment
 
-### 4. Suivi de la progression
+HeySprecht vous aide à mémoriser :
+- Les mots sont révisés au bon moment pour mieux les retenir
+- Plus vous connaissez un mot, plus l'intervalle de révision s'allonge
+- Le système suit votre progression :
+  - Jour 1 : Premier apprentissage
+  - Jour 2 : Première révision
+  - Jour 4 : Deuxième révision
+  - Jour 11 : Troisième révision
+  - Jour 25 : Révision finale
 
-#### Tableau de bord personnel
-- Vue d'ensemble du niveau actuel et des XP
-- Statistiques de visionnage des vidéos
-- Historique des exercices complétés
-- Progrès du vocabulaire
+### 3. S'exercer et progresser
 
-#### Indicateurs de performance
-- Taux de réussite aux exercices
-- Nombre de mots maîtrisés
-- Temps d'apprentissage quotidien
-- Séries d'apprentissage maintenues
+#### Exercices variés
 
-## Architecture technique
+Pour pratiquer ce que vous apprenez :
+- Traduisez des phrases de la vidéo
+- Répondez à des questions sur ce que vous avez vu
+- Entraînez-vous à prononcer les mots
+- Faites des quiz sur le vocabulaire
 
-### Base de données
-- Suivi des progrès utilisateur (table `user_progress`)
-- Historique des exercices (`exercise_completions`)
-- Gestion du vocabulaire personnalisé (`user_vocabulary`)
-- Progression des vidéos (`video_progress`)
+#### Système de récompenses
 
-### API RESTful
-- Endpoints pour la progression de l'apprentissage
-- Gestion des exercices et des résultats
-- Suivi du vocabulaire et des révisions
-- Gestion de la progression vidéo
+Pour rester motivé :
+- Gagnez des points XP à chaque exercice réussi
+- Débloquez de nouveaux niveaux en progressant
+- Maintenez votre série quotidienne d'apprentissage
+- Suivez vos records et vos accomplissements
 
-### Fonctionnalités de gamification
-- Système de points d'expérience
-- Niveaux progressifs
-- Séries d'apprentissage quotidiennes
-- Badges et récompenses
+### 4. Suivre vos progrès
 
-## Bonnes pratiques d'utilisation
+#### Votre tableau de bord
 
-### Pour un apprentissage optimal
-1. Maintenir une routine quotidienne
-2. Utiliser activement le système de révision
-3. Combiner visionnage et exercices
-4. Noter les mots difficiles pour révision
+Visualisez facilement :
+- Votre niveau et vos points XP
+- Le temps passé à regarder des vidéos
+- Les exercices que vous avez faits
+- Les mots que vous connaissez
 
-### Recommandations de progression
-1. Commencer par des vidéos courtes de niveau débutant
-2. Augmenter progressivement la difficulté
-3. Réviser régulièrement le vocabulaire
-4. Pratiquer quotidiennement pour maintenir les séries
+#### Vos accomplissements
+
+Gardez la motivation avec :
+- Votre pourcentage de bonnes réponses
+- Le nombre de mots que vous maîtrisez
+- Votre temps d'apprentissage du jour
+- Votre série de jours consécutifs
+
+## Conseils pour bien apprendre
+
+### Au quotidien
+
+Pour progresser régulièrement :
+- Prévoyez 15-30 minutes chaque jour
+- Commencez par revoir les mots du jour
+- Regardez une nouvelle vidéo ou un segment
+- Faites les exercices associés
+- Notez les mots qui vous posent problème
+
+### Stratégies d'apprentissage
+
+Pour des résultats optimaux :
+- Commencez par des vidéos courtes et faciles
+- Écoutez plusieurs fois chaque segment
+- Répétez les mots à voix haute
+- Utilisez les sous-titres intelligemment :
+  1. D'abord en français pour comprendre
+  2. Puis en allemand pour vous habituer
+  3. Enfin sans sous-titres pour progresser
+
+## Petit guide pour réussir
+
+### Pour bien débuter
+
+Voici comment commencer :
+
+- Choisissez une vidéo courte de niveau débutant
+- Regardez-la d'abord en entier avec les sous-titres
+- Concentrez-vous sur les mots qui reviennent souvent
+- Faites les exercices dès que vous vous sentez prêt
+- N'hésitez pas à revoir plusieurs fois les segments difficiles
+
+### Pour progresser rapidement
+
+Quelques astuces qui marchent bien :
+
+- Apprenez un peu chaque jour (15-30 minutes suffisent !)
+- Révisez vos mots dès que l'application vous le rappelle
+- Essayez de deviner le sens des mots avant de voir la traduction
+- Répétez les phrases à voix haute pour améliorer votre accent
+- Célébrez vos progrès et vos séries d'apprentissage !
+
+### Gardez la motivation
+
+Ces petites habitudes font la différence :
+
+- Fixez-vous un objectif quotidien réaliste (par ex. 1 segment + 5 mots)
+- Connectez-vous chaque jour pour maintenir votre série
+- Notez les mots et expressions que vous aimez
+- Voyez vos progrès dans votre tableau de bord
+- Partagez vos succès avec la communauté HeySprecht
