@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { VideoModel, type Video } from '@/domain/models/video.model'
 import { ExerciseDataSchema, PronunciationSchema } from '@/domain/types/exercise.types'
+import type { WordSegment } from '@/domain/interfaces/video-controller.types'
 import type { VideoRepositoryInterface, VideoSegment } from '@/domain/repositories/video.repository.interface'
 import { db } from '../database/db'
 import { difficultyLevels, videoCategories } from '../database/schema/category.schema'
@@ -238,15 +239,17 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     }
 
     const wordData = videoData.vocabulary.get(rowWords.word)
-    this.updateWordData(wordData, rowWords, exercise, exerciseQuestion, option, pronunciation)
+    this.updateWordData(wordData, rowWords, exercise, exerciseQuestion, exerciseOption, pronunciation)
   }
 
-  private createWordData(word: any) {
+  private createWordData(word: WordSegment | any) {
     return {
+      id: word.id,
       word: word.word,
-      startTime: this.validateTime(word.startTime) / 1000, // Convert milliseconds back to seconds for display
-      endTime: this.validateTime(word.endTime) / 1000, // Convert milliseconds back to seconds for display
-      confidenceScore: word.confidenceScore / 1000
+      startTime: this.validateTime(word.startTime) / 1000,
+      endTime: this.validateTime(word.endTime) / 1000,
+      confidenceScore: word.confidenceScore / 1000,
+      positionInSegment: word.positionInSegment
     }
   }
 

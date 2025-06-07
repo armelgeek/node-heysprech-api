@@ -3,56 +3,30 @@ import os from 'node:os'
 import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
-import { eq, sql, desc, and, not } from 'drizzle-orm'
+import { and, desc, eq, not, sql } from 'drizzle-orm'
 import { LearningProgressService } from '@/application/services/learning-progress.service'
 import { VideoService } from '@/application/services/video.service'
-import type { WordSegment } from '@/domain/interfaces/video-controller.types'
+import type { AudioSegment as AudioSegmentType } from '@/domain/interfaces/video-controller.types'
 import type { Routes } from '@/domain/types'
 import { db } from '../database/db'
-import {
-  audioSegments,
-  exerciseOptions,
-  exerciseQuestions,
-  exercises,
-  pronunciations,
-  videos,
-  wordEntries,
-  wordSegments
-} from '../database/schema'
+import { audioSegments, videos, wordSegments } from '../database/schema'
 
 const baseDir = path.join(os.homedir(), 'heysprech-data')
 
+// Schema definitions that match our interfaces
 const errorResponseSchema = z
   .object({
-    success: z.boolean(),
+    success: z.literal(false),
     error: z.string()
   })
   .openapi('ErrorResponse')
 
 const successResponseSchema = z
   .object({
-    success: z.boolean(),
+    success: z.literal(true),
     message: z.string()
   })
   .openapi('SuccessResponse')
-
-const videoSchema = z
-  .object({
-    id: z.number(),
-    title: z.string(),
-    originalFilename: z.string(),
-    fileSize: z.number(),
-    duration: z.number().optional(),
-    youtubeId: z.string().length(11).optional(),
-    language: z.string(),
-    categoryId: z.number().optional(),
-    difficultyId: z.number().optional(),
-    transcriptionStatus: z.enum(['pending', 'processing', 'completed', 'failed']),
-    errorMessage: z.string().optional(),
-    createdAt: z.string(),
-    processedAt: z.string().optional()
-  })
-  .openapi('Video')
 
 const queueStatusSchema = z
   .object({
@@ -137,20 +111,6 @@ const uploadResponseSchema = z.object({
   })
 })
 
-interface TimingUpdateResult {
-  segment: {
-    id: number;
-    startTime: number;
-    endTime: number;
-  };
-  words: Array<{
-    id: number;
-    startTime: number;
-    endTime: number;
-    confidenceScore: number;
-  }>;
-}
-
 export class VideoController implements Routes {
   public controller: OpenAPIHono
   private videoService: VideoService
@@ -161,6 +121,41 @@ export class VideoController implements Routes {
   }
 
   public initRoutes(): void {
+    // Update audio segment
+    this.controller.put('/videos/:videoId/segments/:segmentId', async (c: any) => {
+      const videoId: number = Number(c.req.param('videoId'))
+      const segmentId: number = Number(c.req.param('segmentId'))
+      const body = await c.req.json()
+
+      if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
+        return c.json({ success: false, error: 'Invalid ID' }, 400)
+      }
+
+      try {
+        const [segment] = await db
+          .select()
+          .from(audioSegments)
+          .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
+
+        if (!segment) {
+          return c.json({ success: false, error: 'Segment not found' }, 404)
+        }
+
+        const [updated] = await db
+          .update(audioSegments)
+          .set({
+            ...segment,
+            ...body,
+            translation: body.translation !== undefined ? body.translation : segment.translation
+          })
+          .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
+          .returning()
+
+        return c.json(updated)
+      } catch (error: any) {
+        return c.json({ success: false, error: error.message }, 500)
+      }
+    })
     this.controller.use('/public/*', serveStatic({ root: baseDir }))
     this.controller.use('/audios/*', serveStatic({ root: baseDir }))
     this.controller.use('/transcriptions/*', serveStatic({ root: baseDir }))
@@ -518,7 +513,7 @@ export class VideoController implements Routes {
                   z.object({
                     id: z.number(),
                     title: z.string(),
-                    originalFilename: z.string(), 
+                    originalFilename: z.string(),
                     fileSize: z.number(),
                     duration: z.number().nullable(),
                     language: z.string(),
@@ -694,537 +689,28 @@ export class VideoController implements Routes {
       }
     )
 
+    // Audio Segment Update Endpoint
     this.controller.openapi(
       createRoute({
-        method: 'get',
-        path: '/word-entries',
-        tags: ['Words'],
-        summary: 'Get All Word Entries',
-        description: 'Retrieve all word entries with their translations and examples',
-        responses: {
-          200: {
-            description: 'List of all word entries',
-            content: {
-              'application/json': {
-                schema: z.array(
-                  z.object({
-                    id: z.number(),
-                    word: z.string(),
-                    language: z.string(),
-                    translations: z.array(z.string()),
-                    examples: z.array(z.string()),
-                    level: z.string(),
-                    metadata: z.record(z.unknown())
-                  })
-                )
-              }
-            }
-          },
-          500: {
-            description: 'Server error',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c) => {
-        try {
-          const result = await db
-            .select({
-              id: wordEntries.id,
-              word: wordEntries.word,
-              language: wordEntries.language,
-              translations: wordEntries.translations,
-              examples: wordEntries.examples,
-              level: wordEntries.level,
-              metadata: wordEntries.metadata
-            })
-            .from(wordEntries)
-          return c.json(result)
-        } catch (error: any) {
-          return c.json({ success: false, error: error.message }, 500)
-        }
-      }
-    )
-
-    this.controller.openapi(
-      createRoute({
-        method: 'get',
-        path: '/exercises',
-        tags: ['Exercises'],
-        summary: 'Get All Exercises',
-        description: 'Retrieve all exercises and their details',
-        responses: {
-          200: {
-            description: 'List of all exercises',
-            content: {
-              'application/json': {
-                schema: z.array(
-                  z.object({
-                    id: z.number(),
-                    wordId: z.number(),
-                    type: z.string(),
-                    level: z.string(),
-                    createdAt: z.string().datetime()
-                  })
-                )
-              }
-            }
-          },
-          500: {
-            description: 'Server error',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        try {
-          const result = await db
-            .select({
-              id: exercises.id,
-              wordId: exercises.wordId,
-              type: exercises.type,
-              level: exercises.level,
-              createdAt: exercises.createdAt
-            })
-            .from(exercises)
-          return c.json(result)
-        } catch (error: any) {
-          return c.json({ success: false, error: error.message }, 500)
-        }
-      }
-    )
-
-    this.controller.openapi(
-      createRoute({
-        method: 'get',
-        path: '/exercise-questions',
-        tags: ['Exercises'],
-        summary: 'Get All Exercise Questions',
-        description: 'Retrieve all exercise questions with their details',
-        responses: {
-          200: {
-            description: 'List of all exercise questions',
-            content: {
-              'application/json': {
-                schema: z.array(
-                  z.object({
-                    id: z.number(),
-                    exerciseId: z.number(),
-                    direction: z.string(),
-                    questionDe: z.string(),
-                    questionFr: z.string(),
-                    wordToTranslate: z.string(),
-                    correctAnswer: z.string()
-                  })
-                )
-              }
-            }
-          },
-          500: {
-            description: 'Server error',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        try {
-          const result = await db
-            .select({
-              id: exerciseQuestions.id,
-              exerciseId: exerciseQuestions.exerciseId,
-              direction: exerciseQuestions.direction,
-              questionDe: exerciseQuestions.questionDe,
-              questionFr: exerciseQuestions.questionFr,
-              wordToTranslate: exerciseQuestions.wordToTranslate,
-              correctAnswer: exerciseQuestions.correctAnswer
-            })
-            .from(exerciseQuestions)
-          return c.json(result)
-        } catch (error: any) {
-          return c.json({ success: false, error: error.message }, 500)
-        }
-      }
-    )
-
-    this.controller.openapi(
-      createRoute({
-        method: 'get',
-        path: '/exercise-options',
-        tags: ['Exercises'],
-        summary: 'Get All Exercise Options',
-        description: 'Retrieve all exercise options for multiple choice questions',
-        responses: {
-          200: {
-            description: 'List of all exercise options',
-            content: {
-              'application/json': {
-                schema: z.array(
-                  z.object({
-                    id: z.number(),
-                    questionId: z.number(),
-                    optionText: z.string(),
-                    isCorrect: z.boolean()
-                  })
-                )
-              }
-            }
-          },
-          500: {
-            description: 'Server error',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        try {
-          const result = await db
-            .select({
-              id: exerciseOptions.id,
-              questionId: exerciseOptions.questionId,
-              optionText: exerciseOptions.optionText,
-              isCorrect: exerciseOptions.isCorrect
-            })
-            .from(exerciseOptions)
-          return c.json(result)
-        } catch (error: any) {
-          return c.json({ success: false, error: error.message }, 500)
-        }
-      }
-    )
-
-    // Delete all videos endpoint with OpenAPI documentation
-    this.controller.openapi(
-      createRoute({
-        method: 'delete',
-        path: '/videos/all',
-        tags: ['Videos'],
-        summary: 'Delete All Videos',
-        description: 'Delete all videos, their files, and associated data from the system',
-        responses: {
-          200: {
-            content: {
-              'application/json': {
-                schema: successResponseSchema
-              }
-            },
-            description: 'All videos and associated data deleted successfully'
-          },
-          500: {
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            },
-            description: 'Server error'
-          }
-        }
-      }),
-      async (c: any) => {
-        try {
-          await this.videoService.deleteAllVideos()
-          return c.json({
-            success: true,
-            message: 'All videos and associated data have been deleted'
-          })
-        } catch (error: any) {
-          console.error('Error deleting all videos:', error)
-          return c.json(
-            {
-              success: false,
-              error: `Failed to delete videos: ${error.message}`
-            },
-            500
-          )
-        }
-      }
-    )
-
-    this.controller.openapi(
-      createRoute({
-        method: 'get',
-        path: '/pronunciations',
-        tags: ['Pronunciations'],
-        summary: 'Get All Pronunciations',
-        description: 'Retrieve all word pronunciation audio files',
-        responses: {
-          200: {
-            description: 'List of all pronunciation files',
-            content: {
-              'application/json': {
-                schema: z.array(
-                  z.object({
-                    id: z.number(),
-                    wordId: z.number(),
-                    filePath: z.string(),
-                    type: z.string(),
-                    language: z.string()
-                  })
-                )
-              }
-            }
-          },
-          500: {
-            description: 'Server error',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        try {
-          const result = await db
-            .select({
-              id: pronunciations.id,
-              wordId: pronunciations.wordId,
-              filePath: pronunciations.filePath,
-              type: pronunciations.type,
-              language: pronunciations.language
-            })
-            .from(pronunciations)
-          return c.json(result)
-        } catch (error: any) {
-          return c.json({ success: false, error: error.message }, 500)
-        }
-      }
-    )
-
-
-      async (c: any) => {
-        try {
-          await this.videoService.deleteAllVideos()
-          return c.json({
-            success: true,
-            message: 'All videos and associated data have been deleted'
-          })
-        } catch (error: any) {
-          console.error('Error deleting all videos:', error)
-          return c.json(
-            {
-              success: false,
-              error: `Failed to delete videos: ${error.message}`
-            },
-            500
-          )
-        }
-      }
-    )
-
-    // Récupérer les exercices d'une vidéo avec leurs questions et options, groupés par direction
-    this.controller.get('/videos/:id/exercises', async (c: any) => {
-      const videoId = Number(c.req.param('id'))
-
-      if (Number.isNaN(videoId)) {
-        return c.json({ error: 'ID de vidéo invalide' }, 400)
-      }
-
-      // Récupérer tous les exercices liés à la vidéo en une seule requête
-      const exercisesData = await db
-        .select({
-          audioSegment: {
-            id: audioSegments.id,
-            text: audioSegments.text
-          },
-          wordSegment: {
-            id: wordSegments.id,
-            word: wordSegments.word
-          },
-          wordEntry: {
-            id: wordEntries.id,
-            word: wordEntries.word,
-            translations: wordEntries.translations
-          },
-          exercise: {
-            id: exercises.id,
-            type: exercises.type,
-            level: exercises.level
-          },
-          question: {
-            id: exerciseQuestions.id,
-            direction: exerciseQuestions.direction,
-            questionDe: exerciseQuestions.questionDe,
-            questionFr: exerciseQuestions.questionFr,
-            wordToTranslate: exerciseQuestions.wordToTranslate,
-            correctAnswer: exerciseQuestions.correctAnswer
-          },
-          option: {
-            id: exerciseOptions.id,
-            optionText: exerciseOptions.optionText,
-            isCorrect: exerciseOptions.isCorrect
-          }
-        })
-        .from(audioSegments)
-        .innerJoin(wordSegments, eq(wordSegments.audioSegmentId, audioSegments.id))
-        .innerJoin(wordEntries, eq(wordEntries.word, wordSegments.word))
-        .innerJoin(exercises, eq(exercises.wordId, wordEntries.id))
-        .innerJoin(exerciseQuestions, eq(exerciseQuestions.exerciseId, exercises.id))
-        .leftJoin(exerciseOptions, eq(exerciseOptions.questionId, exerciseQuestions.id))
-        .where(eq(audioSegments.videoId, videoId))
-
-      // Organiser les résultats par direction
-      const exercisesByDirection: Record<
-        string,
-        Array<{
-          exercise: {
-            id: number
-            type: string
-            level: string
-          }
-          word: {
-            word: string
-            translations: string[]
-          }
-          question: {
-            id: number
-            direction: string
-            questionDe: string
-            questionFr: string
-            wordToTranslate: string
-            correctAnswer: string
-            options: Array<{
-              id: number
-              optionText: string
-              isCorrect: boolean
-            }>
-          }
-          segment: {
-            id: number
-            word: string
-            text: string
-          }
-        }>
-      > = {
-        de_to_fr: [],
-        fr_to_de: []
-      }
-
-      // Grouper les options par question
-      const optionsByQuestion: Map<
-        number,
-        Array<{
-          id: number
-          optionText: string
-          isCorrect: boolean
-        }>
-      > = new Map()
-
-      // Traiter les résultats
-      const processedExercises = new Set()
-      exercisesData.forEach((row) => {
-        if (!row.exercise || !row.question || !row.wordEntry || !row.wordSegment) return
-
-        const direction = row.question.direction
-        if (!processedExercises.has(row.exercise.id)) {
-          exercisesByDirection[direction].push({
-            exercise: {
-              id: row.exercise.id,
-              type: row.exercise.type,
-              level: row.exercise.level
-            },
-            word: {
-              word: row.wordEntry.word,
-              translations: row.wordEntry.translations as string[]
-            },
-            question: {
-              id: row.question.id,
-              direction: row.question.direction,
-              questionDe: row.question.questionDe,
-              questionFr: row.question.questionFr,
-              wordToTranslate: row.question.wordToTranslate,
-              correctAnswer: row.question.correctAnswer,
-              options: optionsByQuestion.get(row.question.id) || []
-            },
-            segment: {
-              id: row.wordSegment.id,
-              word: row.wordSegment.word,
-              text: row.audioSegment.text
-            }
-          })
-          processedExercises.add(row.exercise.id)
-        }
-      })
-
-      return c.json(exercisesByDirection)
-    })
-
-    this.controller.openapi(
-      createRoute({
-        method: 'delete',
-        path: '/videos/all',
-        tags: ['Videos'],
-        summary: 'Delete All Videos',
-        description: 'Delete all videos, their files, and associated data from the system',
-        responses: {
-          200: {
-            content: {
-              'application/json': {
-                schema: successResponseSchema
-              }
-            },
-            description: 'All videos and associated data deleted successfully'
-          },
-          500: {
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            },
-            description: 'Server error'
-          }
-        }
-      }),
-      async (c: any) => {
-        try {
-          await this.videoService.deleteAllVideos()
-          return c.json({
-            success: true,
-            message: 'All videos and associated data have been deleted'
-          })
-        } catch (error: any) {
-          console.error('Error deleting all videos:', error)
-          return c.json(
-            {
-              success: false, 
-              error: `Failed to delete videos: ${error.message}`
-            },
-            500
-          )
-        }
-      }
-    )
-
-    this.controller.openapi(
-      createRoute({
-        method: 'patch',
-        path: '/videos/{id}/categorize',
-        tags: ['Videos'],
-        summary: 'Update Video Category and Difficulty',
-        description: 'Update the category and difficulty level of a video',
+        method: 'put',
+        path: '/videos/{videoId}/segments/{segmentId}',
+        tags: ['Audio'],
+        summary: 'Update Audio Segment',
+        description: 'Update the properties of an audio segment',
         parameters: [
           {
-            name: 'id',
+            name: 'videoId',
             in: 'path',
             required: true,
-            description: 'The ID of the video to update',
-            schema: { type: 'number' }
+            schema: { type: 'number' },
+            description: 'The ID of the video'
+          },
+          {
+            name: 'segmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the segment to update'
           }
         ],
         request: {
@@ -1232,12 +718,11 @@ export class VideoController implements Routes {
             content: {
               'application/json': {
                 schema: z.object({
-                  categoryId: z.number().optional().openapi({
-                    description: 'The ID of the category to assign to the video'
-                  }),
-                  difficultyId: z.number().optional().openapi({
-                    description: 'The ID of the difficulty level to assign to the video'
-                  })
+                  startTime: z.number().optional(),
+                  endTime: z.number().optional(),
+                  text: z.string().optional(),
+                  translation: z.string().optional(),
+                  language: z.string().optional()
                 })
               }
             }
@@ -1245,57 +730,98 @@ export class VideoController implements Routes {
         },
         responses: {
           200: {
+            description: 'Audio segment updated successfully',
             content: {
               'application/json': {
-                schema: videoSchema
+                schema: z.object({
+                  id: z.number(),
+                  startTime: z.number(),
+                  endTime: z.number(),
+                  text: z.string(),
+                  translation: z.string().nullable(),
+                  language: z.string()
+                })
               }
-            },
-            description: 'Video categorization updated successfully'
+            }
           },
           400: {
+            description: 'Invalid request',
             content: {
               'application/json': {
                 schema: errorResponseSchema
               }
-            },
-            description: 'Invalid request data'
-          },
-          404: {
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            },
-            description: 'Video not found'
-          },
-          500: {
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            },
-            description: 'Server error'
+            }
           }
         }
       }),
       async (c: any) => {
-        const id = Number(c.req.param('id'))
-        if (Number.isNaN(id)) {
-          return c.json({ success: false, error: 'Invalid video ID' }, 400)
-        }
-
         try {
-          const body = await c.req.json()
-          const video = await this.videoService.updateVideoCategory(id, {
-            categoryId: body.categoryId,
-            difficultyId: body.difficultyId
-          })
+          const videoId: number = Number(c.req.param('videoId'))
+          const segmentId: number = Number(c.req.param('segmentId'))
 
-          if (!video) {
-            return c.json({ success: false, error: 'Video not found' }, 404)
+          if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
+            return c.json({ success: false, error: 'Invalid ID' }, 400)
           }
 
-          return c.json(video)
+          const body = await c.req.json()
+
+          // Get current segment
+          const segment = await db
+            .select()
+            .from(audioSegments)
+            .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
+            .limit(1)
+
+          if (!segment.length) {
+            return c.json({ success: false, error: 'Segment not found' }, 404)
+          }
+
+          const startTime = body.startTime ?? segment[0].startTime
+          const endTime = body.endTime ?? segment[0].endTime
+
+          // Validate time range
+          if (startTime >= endTime) {
+            return c.json(
+              {
+                success: false,
+                error: 'Start time must be less than end time'
+              },
+              400
+            )
+          }
+
+          // Check for overlaps
+          const existingSegments = await db
+            .select()
+            .from(audioSegments)
+            .where(and(eq(audioSegments.videoId, videoId), not(eq(audioSegments.id, segmentId))))
+
+          const hasOverlap = existingSegments.some((seg) => startTime < seg.endTime && endTime > seg.startTime)
+
+          if (hasOverlap) {
+            return c.json(
+              {
+                success: false,
+                error: 'Updated segment would overlap with existing segments'
+              },
+              400
+            )
+          }
+
+          // Update segment
+          const [updatedSegment] = await db
+            .update(audioSegments)
+            .set({
+              startTime: body.startTime ?? segment[0].startTime,
+              endTime: body.endTime ?? segment[0].endTime,
+              text: body.text ?? segment[0].text,
+              translation: body.translation !== undefined ? body.translation : segment[0].translation,
+              language: body.language ?? segment[0].language
+            })
+            .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
+            .returning()
+
+          return c.json(updatedSegment)
         } catch (error: any) {
           return c.json({ success: false, error: error.message }, 500)
         }
@@ -1304,72 +830,263 @@ export class VideoController implements Routes {
 
     this.controller.openapi(
       createRoute({
-        method: 'get',
-        path: '/videos/filter',
-        tags: ['Videos'],
-        summary: 'Filter Videos',
-        description: 'Filter videos by category and difficulty level',
+        method: 'post',
+        path: '/videos/{videoId}/segments/{segmentId}/words',
+        tags: ['Words'],
+        summary: 'Add Word to Segment',
+        description: 'Add a new word to an audio segment',
         parameters: [
           {
-            name: 'categoryId',
-            in: 'query',
-            required: false,
-            description: 'Filter by video category ID',
-            schema: { type: 'number' }
+            name: 'videoId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the video'
           },
           {
-            name: 'difficultyId',
-            in: 'query',
-            required: false,
-            description: 'Filter by difficulty level ID',
-            schema: { type: 'number' }
+            name: 'segmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the audio segment'
           }
         ],
+        request: {
+          body: {
+            content: {
+              'application/json': {
+                schema: z
+                  .object({
+                    word: z.string(),
+                    startTime: z.number().min(0),
+                    endTime: z.number().min(0),
+                    confidenceScore: z.number().min(0).max(1),
+                    positionInSegment: z.number().int().min(1)
+                  })
+                  .openapi('CreateWordRequest')
+              }
+            }
+          }
+        },
         responses: {
           200: {
+            description: 'Word added successfully',
             content: {
               'application/json': {
-                schema: z.array(videoSchema)
+                schema: z
+                  .object({
+                    id: z.number(),
+                    audioSegmentId: z.number(),
+                    word: z.string(),
+                    startTime: z.number(),
+                    endTime: z.number(),
+                    confidenceScore: z.number(),
+                    positionInSegment: z.number()
+                  })
+                  .openapi('WordResponse')
               }
-            },
-            description: 'List of filtered videos'
+            }
           },
           400: {
+            description: 'Invalid request',
             content: {
               'application/json': {
                 schema: errorResponseSchema
               }
-            },
-            description: 'Invalid request data'
+            }
+          },
+          404: {
+            description: 'Segment not found',
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            }
           },
           500: {
+            description: 'Server error',
             content: {
               'application/json': {
                 schema: errorResponseSchema
               }
-            },
-            description: 'Server error'
+            }
           }
         }
       }),
       async (c: any) => {
         try {
-          const categoryId = c.req.query('categoryId') ? Number(c.req.query('categoryId')) : undefined
-          const difficultyId = c.req.query('difficultyId') ? Number(c.req.query('difficultyId')) : undefined
+          const videoId = Number(c.req.param('videoId'))
+          const segmentId = Number(c.req.param('segmentId'))
+          const body = await c.req.json()
 
-          if (
-            (categoryId !== undefined && Number.isNaN(categoryId)) ||
-            (difficultyId !== undefined && Number.isNaN(difficultyId))
-          ) {
-            return c.json({ success: false, error: 'Invalid category or difficulty ID' }, 400)
+          if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
+            return c.json({ success: false, error: 'Invalid ID' }, 400)
           }
 
-          const videos = await this.videoService.getFilteredVideos({
-            categoryId,
-            difficultyId
-          })
+          // Check segment exists
+          const [segment] = await db
+            .select()
+            .from(audioSegments)
+            .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
 
-          return c.json(videos)
+          if (!segment) {
+            return c.json({ success: false, error: 'Segment not found' }, 404)
+          }
+
+          // Add word
+          const [newWord] = await db
+            .insert(wordSegments)
+            .values({
+              audioSegmentId: segmentId,
+              word: body.word,
+              startTime: body.startTime,
+              endTime: body.endTime,
+              confidenceScore: body.confidenceScore,
+              positionInSegment: body.positionInSegment
+            })
+            .returning()
+
+          return c.json(newWord)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
+      }
+    )
+
+    this.controller.delete('/videos/:videoId/segments/:segmentId/words/:wordId', async (c) => {
+      try {
+        const videoId = Number(c.req.param('videoId'))
+        const segmentId = Number(c.req.param('segmentId'))
+        const wordId = Number(c.req.param('wordId'))
+
+        if (Number.isNaN(videoId) || Number.isNaN(segmentId) || Number.isNaN(wordId)) {
+          return c.json({ success: false, error: 'Invalid ID' }, 400)
+        }
+
+        // Delete word and get its position
+        const [deletedWord] = await db
+          .delete(wordSegments)
+          .where(and(eq(wordSegments.id, wordId), eq(wordSegments.audioSegmentId, segmentId)))
+          .returning()
+
+        if (!deletedWord) {
+          return c.json({ success: false, error: 'Word not found' }, 404)
+        }
+
+        // Update positions of remaining words
+        await db
+          .update(wordSegments)
+          .set({ positionInSegment: sql`position_in_segment - 1` })
+          .where(
+            and(eq(wordSegments.audioSegmentId, segmentId), sql`position_in_segment > ${deletedWord.positionInSegment}`)
+          )
+
+        return c.json({
+          success: true,
+          message: 'Word deleted successfully'
+        })
+      } catch (error: any) {
+        return c.json({ success: false, error: error.message }, 500)
+      }
+    })
+
+    this.controller.openapi(
+      createRoute({
+        method: 'delete',
+        path: '/videos/{videoId}/segments/{segmentId}/words/{wordId}',
+        tags: ['Words'],
+        summary: 'Delete Word from Segment',
+        description: 'Delete a word from an audio segment and update the position of remaining words',
+        parameters: [
+          {
+            name: 'videoId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the video'
+          },
+          {
+            name: 'segmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the audio segment'
+          },
+          {
+            name: 'wordId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the word to delete'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Word deleted successfully',
+            content: {
+              'application/json': {
+                schema: z
+                  .object({
+                    success: z.boolean(),
+                    message: z.string()
+                  })
+                  .openapi('DeleteWordResponse')
+              }
+            }
+          },
+          400: {
+            description: 'Invalid request',
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            }
+          },
+          404: {
+            description: 'Word not found',
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            }
+          },
+          500: {
+            description: 'Server error',
+            content: {
+              'application/json': {
+                schema: errorResponseSchema
+              }
+            }
+          }
+        }
+      }),
+      async (c: any) => {
+        try {
+          const videoId = Number(c.req.param('videoId'))
+          const segmentId = Number(c.req.param('segmentId'))
+          const wordId = Number(c.req.param('wordId'))
+
+          if (Number.isNaN(videoId) || Number.isNaN(segmentId) || Number.isNaN(wordId)) {
+            return c.json({ success: false, error: 'Invalid ID' }, 400)
+          }
+
+          const [word] = await db
+            .delete(wordSegments)
+            .where(and(eq(wordSegments.id, wordId), eq(wordSegments.audioSegmentId, segmentId)))
+            .returning()
+
+          if (!word) {
+            return c.json({ success: false, error: 'Word not found' }, 404)
+          }
+
+          await db
+            .update(wordSegments)
+            .set({ positionInSegment: sql`${wordSegments.positionInSegment} - 1` })
+            .where(
+              and(eq(wordSegments.audioSegmentId, segmentId), sql`position_in_segment > ${word.positionInSegment}`)
+            )
+
+          return c.json({ success: true, message: 'Word deleted successfully' })
         } catch (error: any) {
           return c.json({ success: false, error: error.message }, 500)
         }
@@ -1450,7 +1167,7 @@ export class VideoController implements Routes {
         }
       }),
       async (c: any) => {
-        const videoId = c.req.param('videoId')
+        const videoId = Number(c.req.param('videoId'))
 
         // const videoService = new VideoService()
         const learningService = new LearningProgressService()
@@ -1533,7 +1250,7 @@ export class VideoController implements Routes {
           }
         }
       }),
-      async (c) => {
+      async (c: any) => {
         const user = c.get('user')
         if (!user) {
           return c.json({ success: false, error: 'Unauthorized' }, 401)
@@ -1880,7 +1597,7 @@ export class VideoController implements Routes {
           // Structure the response like the list endpoint
           const video = {
             ...result[0].video,
-            audioSegments: []
+            audioSegments: [] as AudioSegmentType[]
           }
 
           result.forEach((row) => {
@@ -1890,6 +1607,7 @@ export class VideoController implements Routes {
               if (!existingAudioSegment) {
                 video.audioSegments.push({
                   ...row.audioSegment,
+                  videoId,
                   wordSegments: []
                 })
               }
@@ -1901,14 +1619,14 @@ export class VideoController implements Routes {
                   // Insert word segment in correct position
                   for (let i = 0; i < audioSegment.wordSegments.length; i++) {
                     if (audioSegment.wordSegments[i].positionInSegment > row.wordSegment.positionInSegment) {
-                      audioSegment.wordSegments.splice(i, 0, row.wordSegment)
+                      audioSegment.wordSegments.splice(i, 0, { ...row.wordSegment, audioSegmentId: audioSegment.id })
                       inserted = true
                       break
                     }
                   }
                   // If not inserted, add to the end
                   if (!inserted) {
-                    audioSegment.wordSegments.push(row.wordSegment)
+                    audioSegment.wordSegments.push({ ...row.wordSegment, audioSegmentId: audioSegment.id })
                   }
                 }
               }
@@ -2003,100 +1721,76 @@ export class VideoController implements Routes {
 
         try {
           const body = await c.req.json()
-          const startTime = body.startTime * 1000 // Convert to milliseconds 
-          const endTime = body.endTime * 1000
-          
-          // Validate times
-          if (startTime >= endTime) {
-            return c.json({ 
-              success: false,
-              error: 'End time must be greater than start time'
-            }, 400)
+
+          // Validate time ranges
+          if (body.startTime >= body.endTime) {
+            return c.json(
+              {
+                success: false,
+                error: 'Start time must be less than end time'
+              },
+              400
+            )
           }
 
           // Check for overlapping segments
-          const existingSegments = await db
-            .select({
-              id: audioSegments.id,
-              startTime: audioSegments.startTime,
-              endTime: audioSegments.endTime
-            })
-            .from(audioSegments)
-            .where(eq(audioSegments.videoId, videoId))
+          const existingSegments = await db.select().from(audioSegments).where(eq(audioSegments.videoId, videoId))
 
-          const hasOverlap = existingSegments.some(segment => 
-            (startTime >= segment.startTime && startTime < segment.endTime) ||
-            (endTime > segment.startTime && endTime <= segment.endTime) ||
-            (startTime <= segment.startTime && endTime >= segment.endTime)
+          const hasOverlap = existingSegments.some(
+            (segment) => body.startTime < segment.endTime && body.endTime > segment.startTime
           )
 
           if (hasOverlap) {
-            return c.json({
-              success: false,
-              error: 'New segment overlaps with existing segments'
-            }, 400) 
+            return c.json(
+              {
+                success: false,
+                error: 'New segment overlaps with existing segments'
+              },
+              400
+            )
           }
 
-          const [result] = await db
+          // Insert new segment
+          const [newSegment] = await db
             .insert(audioSegments)
             .values({
               videoId,
-              startTime, 
-              endTime,
+              startTime: body.startTime,
+              endTime: body.endTime,
               text: body.text,
-              translation: body.translation,
+              translation: body.translation || null,
               language: body.language
             })
-            .returning({
-              id: audioSegments.id,
-              videoId: audioSegments.videoId,
-              startTime: audioSegments.startTime,
-              endTime: audioSegments.endTime,
-              text: audioSegments.text,
-              translation: audioSegments.translation,
-              language: audioSegments.language
-            })
+            .returning()
 
-          return c.json({
-            success: true,
-            segment: {
-              ...result,
-              startTime: result.startTime / 1000, // Convert back to seconds
-              endTime: result.endTime / 1000
-            }
-          })
-
+          return c.json(newSegment)
         } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to add segment: ${error.message}`
-          }, 500)
+          return c.json({ success: false, error: error.message }, 500)
         }
       }
     )
 
-    // Update segment
     this.controller.openapi(
       createRoute({
-        method: 'patch',
+        method: 'put',
         path: '/videos/{videoId}/segments/{segmentId}',
-        tags: ['Videos'],
-        summary: 'Update Segment',
+        tags: ['Audio'],
+        summary: 'Update Audio Segment',
         description: 'Update an existing audio segment',
         parameters: [
           {
             name: 'videoId',
             in: 'path',
             required: true,
-            description: 'The ID of the video',
-            schema: { type: 'number' }
+            schema: { type: 'number' },
+            description: 'The ID of the video'
           },
           {
             name: 'segmentId',
             in: 'path',
             required: true,
-            description: 'The ID of the segment to update',
-            schema: { type: 'number' }
+            schema: { type: 'number' },
+            description: 'The ID of the segment to update'
           }
         ],
         request: {
@@ -2104,18 +1798,11 @@ export class VideoController implements Routes {
             content: {
               'application/json': {
                 schema: z.object({
-                  startTime: z.number().min(0).optional().openapi({
-                    description: 'Start time of the segment in seconds'
-                  }),
-                  endTime: z.number().min(0).optional().openapi({
-                    description: 'End time of the segment in seconds'
-                  }),
-                  text: z.string().optional().openapi({
-                    description: 'Text content of the segment'
-                  }),
-                  translation: z.string().optional().openapi({
-                    description: 'Translation of the text'
-                  })
+                  startTime: z.number().optional(),
+                  endTime: z.number().optional(),
+                  text: z.string().optional(),
+                  translation: z.string().optional(),
+                  language: z.string().optional()
                 })
               }
             }
@@ -2123,306 +1810,16 @@ export class VideoController implements Routes {
         },
         responses: {
           200: {
-            description: 'Segment updated successfully',
+            description: 'Audio segment updated successfully',
             content: {
               'application/json': {
                 schema: z.object({
-                  success: z.boolean(),
-                  segment: z.object({
-                    id: z.number(),
-                    videoId: z.number(),
-                    startTime: z.number(),
-                    endTime: z.number(),
-                    text: z.string(),
-                    translation: z.string().optional(),
-                    language: z.string()
-                  })
-                })
-              }
-            },
-            description: 'Segment updated successfully'
-          },
-          404: {
-            description: 'Segment not found',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        const videoId = Number(c.req.param('videoId'))
-        const segmentId = Number(c.req.param('segmentId'))
-        
-        if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
-          return c.json({ success: false, error: 'Invalid ID' }, 400)
-        }
-
-        try {
-          const body = await c.req.json()
-          const updateData: Record<string, any> = {}
-
-          // Convert times to milliseconds if provided
-          if (typeof body.startTime === 'number') {
-            updateData.startTime = body.startTime * 1000
-          }
-          if (typeof body.endTime === 'number') {
-            updateData.endTime = body.endTime * 1000
-          }
-          if (body.text !== undefined) {
-            updateData.text = body.text
-          }
-          if (body.translation !== undefined) {
-            updateData.translation = body.translation
-          }
-
-          // Validate times if both are being updated
-          if (updateData.startTime !== undefined && updateData.endTime !== undefined) {
-            if (updateData.startTime >= updateData.endTime) {
-              return c.json({
-                success: false,
-                error: 'End time must be greater than start time'
-              }, 400)
-            }
-          }
-
-          // Check for overlapping segments, excluding current segment
-          if (updateData.startTime !== undefined || updateData.endTime !== undefined) {
-            const segment = await db
-              .select()
-              .from(audioSegments)
-              .where(eq(audioSegments.id, segmentId))
-              .limit(1)
-
-            if (!segment.length) {
-              return c.json({
-                success: false,
-                error: 'Segment not found'
-              }, 404)
-            }
-
-            const newStartTime = updateData.startTime ?? segment[0].startTime
-            const newEndTime = updateData.endTime ?? segment[0].endTime
-
-            const existingSegments = await db
-              .select({
-                id: audioSegments.id,
-                startTime: audioSegments.startTime,
-                endTime: audioSegments.endTime
-              })
-              .from(audioSegments)
-              .where(
-                and(
-                  eq(audioSegments.videoId, videoId),
-                  not(eq(audioSegments.id, segmentId))
-                )
-              )
-
-            const hasOverlap = existingSegments.some(seg => 
-              (newStartTime >= seg.startTime && newStartTime < seg.endTime) ||
-              (newEndTime > seg.startTime && newEndTime <= seg.endTime) ||
-              (newStartTime <= seg.startTime && newEndTime >= seg.endTime)
-            )
-
-            if (hasOverlap) {
-              return c.json({
-                success: false,
-                error: 'Updated segment would overlap with existing segments'
-              }, 400)
-            }
-          }
-
-          const [updated] = await db
-            .update(audioSegments)
-            .set(updateData)
-            .where(
-              and(
-                eq(audioSegments.id, segmentId),
-                eq(audioSegments.videoId, videoId)
-              )
-            )
-            .returning({
-              id: audioSegments.id,
-              videoId: audioSegments.videoId,
-              startTime: audioSegments.startTime,
-              endTime: audioSegments.endTime,
-              text: audioSegments.text,
-              translation: audioSegments.translation,
-              language: audioSegments.language
-            })
-
-          if (!updated) {
-            return c.json({
-              success: false,
-              error: 'Segment not found'
-            }, 404)
-          }
-
-          return c.json({
-            success: true,
-            segment: {
-              ...updated,
-              startTime: updated.startTime / 1000, // Convert back to seconds
-              endTime: updated.endTime / 1000
-            }
-          })
-
-        } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to update segment: ${error.message}`
-          }, 500)
-        }
-      }
-    )
-
-    // Delete segment
-    this.controller.openapi(
-      createRoute({
-        method: 'delete',
-        path: '/videos/{videoId}/segments/{segmentId}',
-        tags: ['Videos'],
-        summary: 'Delete Segment',
-        description: 'Delete an audio segment and its associated words',
-        parameters: [
-          {
-            name: 'videoId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the video',
-            schema: { type: 'number' }
-          },
-          {
-            name: 'segmentId',
-            in: 'path', 
-            required: true,
-            description: 'The ID of the segment to delete',
-            schema: { type: 'number' }
-          }
-        ],
-        responses: {
-          200: {
-            description: 'Segment deleted successfully',
-            content: {
-              'application/json': {
-                schema: successResponseSchema
-              }
-            }
-          },
-          404: {
-            description: 'Segment not found',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        const videoId = Number(c.req.param('videoId'))
-        const segmentId = Number(c.req.param('segmentId'))
-
-        if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
-          return c.json({ success: false, error: 'Invalid ID' }, 400)
-        }
-
-        try {
-          // Delete segment will cascade delete associated words
-          const result = await db
-            .delete(audioSegments)
-            .where(
-              and(
-                eq(audioSegments.id, segmentId),
-                eq(audioSegments.videoId, videoId)
-              )
-            )
-            .returning({ id: audioSegments.id })
-
-          if (!result.length) {
-            return c.json({
-              success: false,
-              error: 'Segment not found'
-            }, 404)
-          }
-
-          return c.json({
-            success: true,
-            message: 'Segment and associated data deleted successfully'
-          })
-
-        } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to delete segment: ${error.message}`
-          }, 500)
-        }
-      }
-    )
-
-    // Add word to segment
-    this.controller.openapi(
-      createRoute({
-        method: 'post',
-        path: '/videos/{videoId}/segments/{segmentId}/words',
-        tags: ['Videos'],
-        summary: 'Add Word to Segment',
-        description: 'Add a new word to an existing audio segment',
-        parameters: [
-          {
-            name: 'videoId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the video',
-            schema: { type: 'number' }
-          },
-          {
-            name: 'segmentId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the segment',
-            schema: { type: 'number' }
-          }
-        ],
-        request: {
-          body: {
-            content: {
-              'application/json': {
-                schema: z.object({
-                  word: z.string().openapi({
-                    description: 'The word text'
-                  }),
-                  startTime: z.number().min(0).openapi({
-                    description: 'Start time of the word in seconds'
-                  }),
-                  endTime: z.number().min(0).openapi({
-                    description: 'End time of the word in seconds'
-                  }),
-                  confidenceScore: z.number().min(0).max(1).openapi({
-                    description: 'Confidence score between 0 and 1'
-                  })
-                })
-              }
-            }
-          }
-        },
-        responses: {
-          200: {
-            description: 'Word added successfully',
-            content: {
-              'application/json': {
-                schema: z.object({
-                  success: z.boolean(),
-                  wordSegment: z.object({
-                    id: z.number(),
-                    audioSegmentId: z.number(),
-                    word: z.string(),
-                    startTime: z.number(),
-                    endTime: z.number(),
-                    confidenceScore: z.number()
-                  })
+                  id: z.number(),
+                  startTime: z.number(),
+                  endTime: z.number(),
+                  text: z.string(),
+                  translation: z.string().nullable(),
+                  language: z.string()
                 })
               }
             }
@@ -2434,6 +1831,111 @@ export class VideoController implements Routes {
                 schema: errorResponseSchema
               }
             }
+          }
+        }
+      }),
+      async (c: any) => {
+        const videoId = Number(c.req.param('videoId'))
+        const segmentId = Number(c.req.param('segmentId'))
+
+        if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
+          return c.json({ success: false, error: 'Invalid ID' }, 400)
+        }
+        try {
+          const body = await c.req.json()
+          const segment = await db
+            .select()
+            .from(audioSegments)
+            .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
+            .limit(1)
+
+          if (!segment.length) {
+            return c.json({ success: false, error: 'Segment not found' }, 404)
+          }
+
+          const startTime = body.startTime ?? segment[0].startTime
+          const endTime = body.endTime ?? segment[0].endTime
+
+          // Validate time ranges
+          if (startTime >= endTime) {
+            return c.json(
+              {
+                success: false,
+                error: 'Start time must be less than end time'
+              },
+              400
+            )
+          }
+
+          // Check for overlapping segments (excluding current segment)
+          const existingSegments = await db
+            .select()
+            .from(audioSegments)
+            .where(and(eq(audioSegments.videoId, videoId), not(eq(audioSegments.id, segmentId))))
+
+          const hasOverlap = existingSegments.some((seg) => startTime < seg.endTime && endTime > seg.startTime)
+
+          if (hasOverlap) {
+            return c.json(
+              {
+                success: false,
+                error: 'Updated segment would overlap with existing segments'
+              },
+              400
+            )
+          }
+
+          // Update segment
+          const [updatedSegment] = await db
+            .update(audioSegments)
+            .set({
+              startTime: body.startTime ?? segment[0].startTime,
+              endTime: body.endTime ?? segment[0].endTime,
+              text: body.text ?? segment[0].text,
+              translation: body.translation !== undefined ? body.translation : segment[0].translation,
+              language: body.language ?? segment[0].language
+            })
+            .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
+            .returning()
+
+          return c.json(updatedSegment)
+        } catch (error: any) {
+          return c.json({ success: false, error: error.message }, 500)
+        }
+      }
+    )
+
+    this.controller.openapi(
+      createRoute({
+        method: 'delete',
+        path: '/videos/{videoId}/segments/{segmentId}',
+        tags: ['Audio'],
+        summary: 'Delete Audio Segment',
+        description: 'Delete an audio segment and its associated word segments',
+        parameters: [
+          {
+            name: 'videoId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the video'
+          },
+          {
+            name: 'segmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'number' },
+            description: 'The ID of the segment to delete'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Audio segment deleted successfully',
+            content: {
+              'application/json': {
+                schema: successResponseSchema
+              }
+            }
           },
           404: {
             description: 'Segment not found',
@@ -2446,231 +1948,32 @@ export class VideoController implements Routes {
         }
       }),
       async (c: any) => {
-        const videoId = Number(c.req.param('videoId'))
-        const segmentId = Number(c.req.param('segmentId'))
-
-        if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
-          return c.json({ success: false, error: 'Invalid ID' }, 400)
-        }
-
         try {
-          const body = await c.req.json()
-          
-          // Verify segment exists and belongs to video
-          const segment = await db
-            .select()
-            .from(audioSegments)
-            .where(
-              and(
-                eq(audioSegments.id, segmentId),
-                eq(audioSegments.videoId, videoId)
-              )
-            )
-            .limit(1)
-          
-          if (!segment.length) {
-            return c.json({
-              success: false,
-              error: 'Segment not found or does not belong to this video'
-            }, 404)
+          const videoId = Number(c.req.param('videoId'))
+          const segmentId = Number(c.req.param('segmentId'))
+
+          if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
+            return c.json({ success: false, error: 'Invalid ID' }, 400)
           }
 
-          const startTime = body.startTime * 1000
-          const endTime = body.endTime * 1000
+          // First delete associated word segments
+          await db.delete(wordSegments).where(eq(wordSegments.audioSegmentId, segmentId))
 
-          // Validate times
-          if (startTime >= endTime) {
-            return c.json({
-              success: false,
-              error: 'End time must be greater than start time'
-            }, 400)
-          }
-
-          // Validate word is within segment bounds
-          if (startTime < segment[0].startTime || endTime > segment[0].endTime) {
-            return c.json({
-              success: false,
-              error: 'Word times must be within segment bounds'
-            }, 400)
-          }
-
-          // Check for overlapping words
-          const existingWords = await db
-            .select({
-              startTime: wordSegments.startTime,
-              endTime: wordSegments.endTime
-            })
-            .from(wordSegments)
-            .where(eq(wordSegments.audioSegmentId, segmentId))
-
-          const hasOverlap = existingWords.some(word =>
-            (startTime >= word.startTime && startTime < word.endTime) ||
-            (endTime > word.startTime && endTime <= word.endTime) ||
-            (startTime <= word.startTime && endTime >= word.endTime)
-          )
-
-          if (hasOverlap) {
-            return c.json({
-              success: false,
-              error: 'Word would overlap with existing words'
-            }, 400)
-          }
-
-          // Calculate position
-          const positionResult = await db
-            .select({ 
-              maxPosition: sql<number>`COALESCE(MAX(${wordSegments.positionInSegment}), 0)`
-            })
-            .from(wordSegments)
-            .where(eq(wordSegments.audioSegmentId, segmentId))
-
-          const position = (positionResult[0]?.maxPosition ?? 0) + 1
-
-          // Add the word
-          const [result] = await db
-            .insert(wordSegments)
-            .values({
-              audioSegmentId: segmentId,
-              word: body.word,
-              startTime,
-              endTime,
-              confidenceScore: Math.round(body.confidenceScore * 1000),
-              positionInSegment: position
-            })
-            .returning({
-              id: wordSegments.id,
-              audioSegmentId: wordSegments.audioSegmentId,
-              word: wordSegments.word,
-              startTime: wordSegments.startTime,
-              endTime: wordSegments.endTime,
-              confidenceScore: wordSegments.confidenceScore
-            })
-
-          return c.json({
-            success: true,
-            wordSegment: {
-              ...result,
-              startTime: result.startTime / 1000,
-              endTime: result.endTime / 1000,
-              confidenceScore: result.confidenceScore / 1000
-            }
-          })
-
-        } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to add word: ${error.message}`
-          }, 500)
-        }
-      }
-    )
-
-    // Delete word
-    this.controller.openapi(
-      createRoute({
-        method: 'delete',
-        path: '/videos/{videoId}/segments/{segmentId}/words/{wordId}',
-        tags: ['Videos'],
-        summary: 'Delete Word',
-        description: 'Delete a word from an audio segment',
-        parameters: [
-          {
-            name: 'videoId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the video',
-            schema: { type: 'number' }
-          },
-          {
-            name: 'segmentId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the segment',
-            schema: { type: 'number' }
-          },
-          {
-            name: 'wordId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the word to delete',
-            schema: { type: 'number' }
-          }
-        ],
-        responses: {
-          200: {
-            description: 'Word deleted successfully',
-            content: {
-              'application/json': {
-                schema: successResponseSchema
-              }
-            }
-          },
-          404: {
-            description: 'Word not found',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        const videoId = Number(c.req.param('videoId'))
-        const segmentId = Number(c.req.param('segmentId'))
-        const wordId = Number(c.req.param('wordId'))
-
-        if (Number.isNaN(videoId) || Number.isNaN(segmentId) || Number.isNaN(wordId)) {
-          return c.json({ success: false, error: 'Invalid ID' }, 400)
-        }
-
-        try {
-          // Verify segment exists and belongs to video
-          const segment = await db
-            .select()
-            .from(audioSegments)
-            .where(
-              and(
-                eq(audioSegments.id, segmentId),
-                eq(audioSegments.videoId, videoId)
-              )
-            )
-            .limit(1)
-
-          if (!segment.length) {
-            return c.json({
-              success: false,
-              error: 'Segment not found or does not belong to this video'
-            }, 404)
-          }
-
+          // Then delete the audio segment
           const result = await db
-            .delete(wordSegments)
-            .where(
-              and(
-                eq(wordSegments.id, wordId),
-                eq(wordSegments.audioSegmentId, segmentId)
-              )
-            )
-            .returning({ id: wordSegments.id })
+            .delete(audioSegments)
+            .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
 
-          if (!result.length) {
-            return c.json({
-              success: false,
-              error: 'Word not found or does not belong to this segment'
-            }, 404)
+          if (result.length === 0) {
+            return c.json({ success: false, error: 'Segment not found' }, 404)
           }
 
           return c.json({
             success: true,
-            message: 'Word deleted successfully'
+            message: 'Audio segment and associated word segments deleted successfully'
           })
-
         } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to delete word: ${error.message}`
-          }, 500)
+          return c.json({ success: false, error: error.message }, 500)
         }
       }
     )
@@ -2692,7 +1995,7 @@ export class VideoController implements Routes {
             schema: { type: 'number' }
           },
           {
-            name: 'segmentId', 
+            name: 'segmentId',
             in: 'path',
             required: true,
             description: 'The ID of the segment',
@@ -2754,12 +2057,7 @@ export class VideoController implements Routes {
             .set({
               translation: body.translation
             })
-            .where(
-              and(
-                eq(audioSegments.id, segmentId),
-                eq(audioSegments.videoId, videoId)
-              )
-            )
+            .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
             .returning({
               id: audioSegments.id,
               text: audioSegments.text,
@@ -2767,262 +2065,30 @@ export class VideoController implements Routes {
             })
 
           if (!updated) {
-            return c.json({
-              success: false,
-              error: 'Segment not found'
-            }, 404)
+            return c.json(
+              {
+                success: false,
+                error: 'Segment not found'
+              },
+              404
+            )
           }
 
           return c.json({
             success: true,
             segment: updated
           })
-
         } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to update translation: ${error.message}`
-          }, 500)
-        }
-      }
-    )
-
-    // Update segment timings and metadata
-    this.controller.openapi(
-      createRoute({
-        method: 'patch',
-        path: '/videos/{videoId}/segments/{segmentId}/timing',
-               tags: ['Videos'],
-        summary: 'Update Segment Timing',
-        description: 'Update timing for a segment and its words',
-        parameters: [
-          {
-            name: 'videoId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the video',
-            schema: { type: 'number' }
-          },
-          {
-            name: 'segmentId',
-            in: 'path',
-            required: true,
-            description: 'The ID of the segment',
-            schema: { type: 'number' }
-          }
-        ],
-        request: {
-          body: {
-            content: {
-              'application/json': {
-                schema: z.object({
-                  startTime: z.number().min(0).openapi({
-                    description: 'New start time in seconds'
-                  }),
-                  endTime: z.number().min(0).openapi({
-                    description: 'New end time in seconds'
-                  }),
-                  words: z.array(
-                    z.object({
-                      id: z.number(),
-                      startTime: z.number().min(0),
-                      endTime: z.number().min(0),
-                      confidenceScore: z.number().min(0).max(1)
-                    })
-                  ).optional().openapi({
-                    description: 'Updated timing for words in the segment'
-                  })
-                })
-              }
-            }
-          }
-        },
-        responses: {
-          200: {
-            description: 'Timing updated successfully',
-            content: {
-              'application/json': {
-                schema: z.object({
-                  success: z.boolean(),
-                  segment: z.object({
-                    id: z.number(),
-                    startTime: z.number(),
-                    endTime: z.number(),
-                    words: z.array(z.object({
-                      id: z.number(),
-                      startTime: z.number(),
-                      endTime: z.number(),
-                      confidenceScore: z.number()
-                    }))
-                  })
-                })
-              }
-            }
-          },
-          400: {
-            description: 'Invalid timing values',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          },
-          404: {
-            description: 'Segment or word not found',
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            }
-          }
-        }
-      }),
-      async (c: any) => {
-        const videoId = Number(c.req.param('videoId'))
-        const segmentId = Number(c.req.param('segmentId'))
-
-        if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
-          return c.json({ success: false, error: 'Invalid ID' }, 400)
-        }
-
-        try {
-          const body = await c.req.json()
-          const startTime = body.startTime * 1000 // Convert to milliseconds
-          const endTime = body.endTime * 1000
-
-          // Validate times
-          if (startTime >= endTime) {
-            return c.json({
+          return c.json(
+            {
               success: false,
-              error: 'End time must be greater than start time'
-            }, 400)
-          }
-
-          // Check for overlapping segments
-          const existingSegments = await db
-            .select({
-              id: audioSegments.id,
-              startTime: audioSegments.startTime,
-              endTime: audioSegments.endTime
-            })
-            .from(audioSegments)
-            .where(
-              and(
-                eq(audioSegments.videoId, videoId),
-                not(eq(audioSegments.id, segmentId))
-              )
-            )
-
-          const hasOverlap = existingSegments.some(segment =>
-            (startTime >= segment.startTime && startTime < segment.endTime) ||
-            (endTime > segment.startTime && endTime <= segment.endTime) ||
-            (startTime <= segment.startTime && endTime >= segment.endTime)
+              error: `Failed to update translation: ${error.message}`
+            },
+            500
           )
-
-          if (hasOverlap) {
-            return c.json({
-              success: false,
-              error: 'Segment timing would overlap with other segments'
-            }, 400)
-          }
-
-          let result = await db.transaction(async (tx) => {
-            // Update segment timing
-            const [updatedSegment] = await tx
-              .update(audioSegments)
-              .set({
-                startTime,
-                endTime
-              })
-              .where(
-                and(
-                  eq(audioSegments.id, segmentId),
-                  eq(audioSegments.videoId, videoId)
-                )
-              )
-              .returning({
-                id: audioSegments.id,
-                startTime: audioSegments.startTime,
-                endTime: audioSegments.endTime
-              })
-
-            if (!updatedSegment) {
-              throw new Error('Segment not found')
-            }
-
-            let updatedWords = []
-
-            if (body.words && body.words.length > 0) {
-              // Validate word times are within segment bounds
-              for (const word of body.words) {
-                const wordStartTime = word.startTime * 1000
-                const wordEndTime = word.endTime * 1000
-
-                if (wordStartTime < startTime || wordEndTime > endTime) {
-                  throw new Error('Word times must be within segment bounds')
-                }
-
-                // Update the word
-                const [updatedWord] = await tx
-                  .update(wordSegments)
-                  .set({
-                    startTime: wordStartTime,
-                    endTime: wordEndTime,
-                    confidenceScore: Math.round(word.confidenceScore * 1000)
-                  })
-                  .where(
-                    and(
-                      eq(wordSegments.id, word.id),
-                      eq(wordSegments.audioSegmentId, segmentId)
-                    )
-                  )
-                  .returning({
-                    id: wordSegments.id,
-                    startTime: wordSegments.startTime,
-                    endTime: wordSegments.endTime,
-                    confidenceScore: wordSegments.confidenceScore
-                  })
-
-                if (!updatedWord) {
-                  throw new Error(`Word with ID ${word.id} not found`)
-                }
-
-                updatedWords.push(updatedWord)
-              }
-            }
-
-            return {
-              segment: updatedSegment,
-              words: updatedWords
-            }
-          })
-
-          // Convert times back to seconds for response
-          return c.json({
-            success: true,
-            segment: {
-              id: result.segment.id,
-              startTime: result.segment.startTime / 1000,
-              endTime: result.segment.endTime / 1000,
-              words: result.words.map(word => ({
-                id: word.id,
-                startTime: word.startTime / 1000,
-                endTime: word.endTime / 1000,
-                confidenceScore: word.confidenceScore / 1000
-              }))
-            }
-          })
-
-        } catch (error: any) {
-          return c.json({
-            success: false,
-            error: `Failed to update timing: ${error.message}`
-          }, error.message.includes('not found') ? 404 : 500)
         }
       }
     )
-
-    // ...rest of routes...
   }
 
   public getRouter() {

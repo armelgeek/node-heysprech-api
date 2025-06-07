@@ -25,7 +25,7 @@ export interface AudioSegment {
   startTime: number
   endTime: number
   text: string
-  translation?: string
+  translation?: string | null
   language: string
   wordSegments: WordSegment[]
 }
@@ -84,4 +84,100 @@ export interface VideoLearningStatus {
 
 export interface ExercisesByDirection {
   [direction: string]: ExerciseData[]
+}
+
+export interface WordUpdate {
+  id: number
+  word?: string
+  startTime: number
+  endTime: number
+  confidenceScore: number
+  positionInSegment?: number
+}
+
+export interface WordCreateRequest {
+  word: string
+  startTime: number
+  endTime: number
+  confidenceScore: number
+  positionInSegment: number
+}
+
+export interface WordResponse {
+  id: number
+  audioSegmentId: number
+  word: string
+  startTime: number
+  endTime: number
+  confidenceScore: number
+  positionInSegment: number
+}
+
+export interface CreateAudioSegmentRequest {
+  startTime: number
+  endTime: number
+  text: string
+  translation?: string
+  language?: string
+}
+
+export interface UpdateAudioSegmentRequest {
+  startTime?: number
+  endTime?: number
+  text?: string
+  translation?: string | null
+  language?: string
+}
+
+export interface AudioSegmentResponse {
+  id: number
+  videoId: number
+  startTime: number
+  endTime: number
+  text: string
+  translation: string | null
+  language: string
+}
+
+export interface UpdateSegmentTimingRequest {
+  startTime: number
+  endTime: number
+  words?: WordUpdate[]
+}
+
+export interface UpdateSegmentTimingResponse {
+  success: boolean
+  segment: {
+    id: number
+    startTime: number
+    endTime: number
+    words: Array<{
+      id: number
+      startTime: number
+      endTime: number
+      confidenceScore: number
+      positionInSegment: number
+    }>
+  }
+}
+
+export interface QueueStatus {
+  waiting: number
+  active: number
+  completed: number
+  failed: number
+}
+
+export interface VideoListItem {
+  id: number
+  title: string
+  originalFilename: string
+  fileSize: number
+  duration: number | null
+  language: string
+  youtubeId: string | null
+  transcriptionStatus: string
+  createdAt: string
+  segmentCount: number
+  wordCount: number
 }
