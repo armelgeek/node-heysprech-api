@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import type { Routes } from '@/domain/types'
 import { ExerciseDataSchema, HintSchema, MediaSchema } from '../../domain/types/exercise.types'
 import { db } from '../database/db'
 import {
@@ -247,6 +248,7 @@ export class ExerciseController implements Routes {
             .insert(exercises)
             .values({
               wordId,
+              videoId,
               type: exerciseData.type,
               level: exerciseData.level,
               metadata: exerciseData
