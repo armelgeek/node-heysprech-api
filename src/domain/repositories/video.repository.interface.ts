@@ -53,7 +53,7 @@ export interface VideoRepositoryInterface {
     vocabulary: number
     language: string
   }>
-  insertExercises: (exercises: ExerciseData[], word: string) => Promise<void>
+  insertExercises: (exercises: ExerciseData[], word: string, videoId: number) => Promise<void>
   insertPronunciations: (pronunciations: PronunciationData[], word: string) => Promise<void>
   /**
    * Mark a list of segments as completed for a user

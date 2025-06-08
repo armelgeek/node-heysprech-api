@@ -294,7 +294,7 @@ export class ProcessingQueue {
         for (const word of jsonData.vocabulary) {
           if (word.exercises) {
             console.info(`✍️ [Video ${videoId}] Création des exercices pour le mot: ${word.word}`)
-            await this.videoRepository.insertExercises(word.exercises, word.word)
+            await this.videoRepository.insertExercises(word.exercises, word.word, videoId)
           }
         }
         await this.videoRepository.logProcessingStep(videoId, 'exercises', 'completed')

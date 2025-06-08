@@ -541,7 +541,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
             // Traitement des exercices
             if (word.exercises) {
               console.info(`📝 [Video ${videoId}] Traitement des exercices pour le mot ${word.word}...`)
-              await this.insertExercisesTx(tx, word.exercises, wordEntry.id)
+              await this.insertExercisesTx(tx, word.exercises, wordEntry.id, videoId)
             }
 
             // Traitement des prononciations
@@ -583,7 +583,8 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
   private async insertExercisesTx(
     tx: PgTransaction<any, any, any>,
     exercisesData: unknown,
-    wordId: number
+    wordId: number,
+    videoId: number
   ): Promise<void> {
     try {
       const result = ExerciseDataSchema.safeParse(exercisesData)
@@ -597,55 +598,64 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
         .insert(exercises)
         .values({
           wordId,
+          videoId,
           type: validatedData.type,
-          level: validatedData.level
+          level: validatedData.level,
+          metadata: validatedData
         })
         .returning({ id: exercises.id })
 
-      // Traitement des questions DE -> FR
-      if (validatedData.de_to_fr) {
-        const [question] = await tx
-          .insert(exerciseQuestions)
-          .values({
-            exerciseId: exercise.id,
-            direction: 'de_to_fr',
-            questionDe: validatedData.de_to_fr.question.de,
-            questionFr: validatedData.de_to_fr.question.fr,
-            wordToTranslate: validatedData.de_to_fr.word_to_translate,
-            correctAnswer: validatedData.de_to_fr.correct_answer
-          })
-          .returning({ id: exerciseQuestions.id })
+      // Handle different exercise types
+      if (validatedData.type === 'multiple_choice_pair') {
+        // Traitement des questions DE -> FR
+        if (validatedData.de_to_fr) {
+          const [question] = await tx
+            .insert(exerciseQuestions)
+            .values({
+              exerciseId: exercise.id,
+              direction: 'de_to_fr',
+              questionDe: validatedData.de_to_fr.question.de,
+              questionFr: validatedData.de_to_fr.question.fr,
+              wordToTranslate: validatedData.de_to_fr.word_to_translate,
+              correctAnswer: validatedData.de_to_fr.correct_answer
+            })
+            .returning({ id: exerciseQuestions.id })
 
-        // Ajout des options
-        const options = validatedData.de_to_fr.options.map((option) => ({
-          questionId: question.id,
-          optionText: option,
-          isCorrect: option === validatedData.de_to_fr.correct_answer
-        }))
-        await tx.insert(exerciseOptions).values(options)
-      }
+          // Ajout des options
+          const options = validatedData.de_to_fr.options.map((option) => ({
+            questionId: question.id,
+            optionText: option,
+            isCorrect: option === validatedData.de_to_fr.correct_answer
+          }))
+          await tx.insert(exerciseOptions).values(options)
+        }
 
-      // Traitement des questions FR -> DE
-      if (validatedData.fr_to_de) {
-        const [question] = await tx
-          .insert(exerciseQuestions)
-          .values({
-            exerciseId: exercise.id,
-            direction: 'fr_to_de',
-            questionDe: validatedData.fr_to_de.question.de,
-            questionFr: validatedData.fr_to_de.question.fr,
-            wordToTranslate: validatedData.fr_to_de.word_to_translate,
-            correctAnswer: validatedData.fr_to_de.correct_answer
-          })
-          .returning({ id: exerciseQuestions.id })
+        // Traitement des questions FR -> DE
+        if (validatedData.fr_to_de) {
+          const [question] = await tx
+            .insert(exerciseQuestions)
+            .values({
+              exerciseId: exercise.id,
+              direction: 'fr_to_de',
+              questionDe: validatedData.fr_to_de.question.de,
+              questionFr: validatedData.fr_to_de.question.fr,
+              wordToTranslate: validatedData.fr_to_de.word_to_translate,
+              correctAnswer: validatedData.fr_to_de.correct_answer
+            })
+            .returning({ id: exerciseQuestions.id })
 
-        // Ajout des options
-        const options = validatedData.fr_to_de.options.map((option) => ({
-          questionId: question.id,
-          optionText: option,
-          isCorrect: option === validatedData.fr_to_de.correct_answer
-        }))
-        await tx.insert(exerciseOptions).values(options)
+          // Ajout des options
+          const options = validatedData.fr_to_de.options.map((option) => ({
+            questionId: question.id,
+            optionText: option,
+            isCorrect: option === validatedData.fr_to_de.correct_answer
+          }))
+          await tx.insert(exerciseOptions).values(options)
+        }
+      } else {
+        // For other exercise types, the data is stored in metadata only
+        // No additional questions/options needed
+        console.info(`✓ Exercise of type ${validatedData.type} stored in metadata`)
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -676,7 +686,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
     }
   }
 
-  async insertExercises(exercises: z.infer<typeof ExerciseDataSchema>[], word: string): Promise<void> {
+  async insertExercises(exercises: z.infer<typeof ExerciseDataSchema>[], word: string, videoId: number): Promise<void> {
     await db.transaction(async (tx) => {
       // Trouver l'ID du mot
       const [wordEntry] = await tx
@@ -689,7 +699,7 @@ export class VideoRepository extends BaseRepository<typeof videos> implements Vi
         throw new Error(`Word not found: ${word}`)
       }
 
-      await this.insertExercisesTx(tx, exercises, wordEntry.id)
+      await this.insertExercisesTx(tx, exercises, wordEntry.id, videoId)
     })
   }
 
