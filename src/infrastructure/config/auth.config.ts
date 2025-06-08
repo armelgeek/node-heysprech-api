@@ -31,8 +31,8 @@ export const auth = betterAuth({
     provider: 'pg',
     usePlural: true
   }),
-  baseURL: 'http://localhost:3000',
-  trustedOrigins: ['http://localhost:3000'],
+  baseURL: 'https://hf.tiakalo.org',
+  trustedOrigins: ['https://hf.tiakalo.org'],
   user: {
     modelName: 'users',
     additionalFields: {
