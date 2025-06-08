@@ -1,14 +1,22 @@
 import { boolean, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, varchar } from 'drizzle-orm/pg-core'
 
-export const exerciseTypeEnum = pgEnum('exercise_type', ['multiple_choice_pair'])
+export const exerciseTypeEnum = pgEnum('exercise_type', [
+  'multiple_choice_pair',
+  'fill_in_blank',
+  'sentence_formation',
+  'listening_comprehension',
+  'phrase_matching'
+])
 export const languageDirectionEnum = pgEnum('language_direction', ['de_to_fr', 'fr_to_de'])
 export const languageLevelEnum = pgEnum('language_level', ['beginner', 'intermediate', 'advanced'])
 
 export const exercises = pgTable('exercises', {
   id: serial('id').primaryKey(),
   wordId: integer('word_id').notNull(),
+  videoId: integer('video_id').notNull(),
   type: exerciseTypeEnum('type').notNull(),
   level: languageLevelEnum('level').notNull(),
+  metadata: jsonb('metadata'),
   createdAt: timestamp('created_at').defaultNow()
 })
 
@@ -54,5 +62,24 @@ export const pronunciations = pgTable('pronunciations', {
   filePath: varchar('file_path', { length: 1000 }).notNull(),
   type: varchar('type', { length: 50 }).notNull(),
   language: varchar('language', { length: 10 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow()
+})
+
+export const exerciseHints = pgTable('exercise_hints', {
+  id: serial('id').primaryKey(),
+  exerciseId: integer('exercise_id')
+    .notNull()
+    .references(() => exercises.id, { onDelete: 'cascade' }),
+  hintText: text('hint_text').notNull(),
+  createdAt: timestamp('created_at').defaultNow()
+})
+
+export const exerciseMedia = pgTable('exercise_media', {
+  id: serial('id').primaryKey(),
+  exerciseId: integer('exercise_id')
+    .notNull()
+    .references(() => exercises.id, { onDelete: 'cascade' }),
+  mediaType: varchar('media_type', { length: 50 }).notNull(),
+  mediaUrl: text('media_url').notNull(),
   createdAt: timestamp('created_at').defaultNow()
 })
