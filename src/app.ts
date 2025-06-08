@@ -57,8 +57,8 @@ export class App {
       cors({
         origin:
           Bun.env.NODE_ENV === 'production'
-            ? ['https://hf.tiakalo.org', 'https://hf.tiakalo.org']
-            : [Bun.env.BETTER_AUTH_URL || 'https://hf.tiakalo.org', Bun.env.REACT_APP_URL || 'https://hf.tiakalo.org'],
+            ? ['http://localhost:3000', 'http://localhost:3000']
+            : [Bun.env.BETTER_AUTH_URL || 'http://localhost:3000', Bun.env.REACT_APP_URL || 'http://localhost:3000'],
         credentials: true,
         maxAge: 86400
       })
@@ -70,9 +70,9 @@ export class App {
 
   private initializeSwaggerUI() {
     this.app.doc31('/swagger', () => {
-      const protocol = 'https:'
-      const hostname = 'hf.tiakalo.org'
-      const port = Bun.env.NODE_ENV === 'production' ? '' : ':5000'
+      const protocol = 'http:'
+      const hostname = 'localhost'
+      const port = Bun.env.NODE_ENV === 'production' ? '' : ':3000'
 
       return {
         openapi: '3.1.0',
@@ -103,7 +103,7 @@ export class App {
           robots: 'index, follow',
           description: 'Boiler Hono API is ....'
         },
-        url: Bun.env.NODE_ENV === 'production' ? 'https://hf.tiakalo.org/swagger' : 'https://hf.tiakalo.org/swagger'
+        url: Bun.env.NODE_ENV === 'production' ? 'http://localhost:3000/swagger' : 'http://localhost:3000/swagger'
       })
     )
   }
