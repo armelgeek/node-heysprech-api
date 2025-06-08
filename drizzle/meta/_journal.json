@@ -22,6 +22,20 @@
       "when": 1749064534881,
       "tag": "0002_great_peter_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1749382911810,
+      "tag": "0003_black_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1749405583312,
+      "tag": "0004_light_captain_britain",
+      "breakpoints": true
     }
   ]
 }

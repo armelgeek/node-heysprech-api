@@ -5,3 +5,4 @@ yarn-error.log
 .env.production
 dist/
 uploads/
+.github

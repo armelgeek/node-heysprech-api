@@ -8,7 +8,15 @@ export * from './schema'
 export * from './video.schema'
 export * from './learning.schema'
 export * from './category.schema'
-export { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries } from './exercise.schema'
+export {
+  exerciseHints,
+  exerciseMedia,
+  exerciseOptions,
+  exerciseQuestions,
+  exercises,
+  pronunciations,
+  wordEntries
+} from './exercise.schema'
 export * from './learning.relations'
 export * from './exercise.relations'
 
