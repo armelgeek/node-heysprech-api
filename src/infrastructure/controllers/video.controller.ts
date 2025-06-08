@@ -50,13 +50,13 @@ const uploadRequestSchema = z.object({
     description: 'Optional YouTube video ID for reference',
     example: 'dQw4w9WgXcQ'
   }),
-  categoryId: z.number().optional().openapi({
+  categoryId: z.string().optional().openapi({
     description: 'Optional category ID to assign to the video',
-    example: 1
+    example: "1"
   }),
-  difficultyId: z.number().optional().openapi({
+  difficultyId: z.string().optional().openapi({
     description: 'Optional difficulty level ID to assign to the video',
-    example: 1
+    example: "1"
   }),
   audioFile: z.custom<File>().openapi({
     type: 'string',
