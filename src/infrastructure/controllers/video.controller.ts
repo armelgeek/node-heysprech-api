@@ -4,7 +4,6 @@ import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { and, desc, eq, not, sql } from 'drizzle-orm'
-import { LearningProgressService } from '@/application/services/learning-progress.service'
 import { VideoService } from '@/application/services/video.service'
 import type { AudioSegment as AudioSegmentType } from '@/domain/interfaces/video-controller.types'
 import type { Routes } from '@/domain/types'
@@ -36,28 +35,6 @@ const queueStatusSchema = z
     failed: z.number()
   })
   .openapi('QueueStatus')
-
-const learningStatusResponseSchema = z
-  .object({
-    completedExercises: z.number(),
-    masteredWords: z.number(),
-    totalSegments: z.number(),
-    progress: z.number(),
-    lastActivity: z.string().optional()
-  })
-  .openapi('LearningStatus')
-
-const segmentResponseSchema = z
-  .object({
-    id: z.number(),
-    start: z.number(),
-    end: z.number(),
-    text: z.string(),
-    translation: z.string().optional(),
-    exerciseCount: z.number(),
-    wordCount: z.number()
-  })
-  .openapi('VideoSegment')
 
 // Request Schemas
 const uploadRequestSchema = z.object({
@@ -121,41 +98,6 @@ export class VideoController implements Routes {
   }
 
   public initRoutes(): void {
-    // Update audio segment
-    this.controller.put('/videos/:videoId/segments/:segmentId', async (c: any) => {
-      const videoId: number = Number(c.req.param('videoId'))
-      const segmentId: number = Number(c.req.param('segmentId'))
-      const body = await c.req.json()
-
-      if (Number.isNaN(videoId) || Number.isNaN(segmentId)) {
-        return c.json({ success: false, error: 'Invalid ID' }, 400)
-      }
-
-      try {
-        const [segment] = await db
-          .select()
-          .from(audioSegments)
-          .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
-
-        if (!segment) {
-          return c.json({ success: false, error: 'Segment not found' }, 404)
-        }
-
-        const [updated] = await db
-          .update(audioSegments)
-          .set({
-            ...segment,
-            ...body,
-            translation: body.translation !== undefined ? body.translation : segment.translation
-          })
-          .where(and(eq(audioSegments.id, segmentId), eq(audioSegments.videoId, videoId)))
-          .returning()
-
-        return c.json(updated)
-      } catch (error: any) {
-        return c.json({ success: false, error: error.message }, 500)
-      }
-    })
     this.controller.use('/public/*', serveStatic({ root: baseDir }))
     this.controller.use('/audios/*', serveStatic({ root: baseDir }))
     this.controller.use('/transcriptions/*', serveStatic({ root: baseDir }))
@@ -825,128 +767,6 @@ export class VideoController implements Routes {
         } catch (error: any) {
           return c.json({ success: false, error: error.message }, 500)
         }
-      }
-    )
-
-    this.controller.openapi(
-      createRoute({
-        method: 'get',
-        tags: ['Learning'],
-        path: '/videos/{videoId}/learning-status',
-
-        request: {
-          params: z.object({
-            videoId: z.number()
-          })
-        },
-        responses: {
-          200: {
-            content: {
-              'application/json': {
-                schema: learningStatusResponseSchema
-              }
-            },
-            description: 'Successfully retrieved video learning status'
-          },
-          404: {
-            content: {
-              'application/json': {
-                schema: errorResponseSchema
-              }
-            },
-            description: 'Video not found'
-          }
-        }
-      }),
-      async (c: any) => {
-        const user = c.get('user')
-        const userId = user.id
-        const videoId = c.req.param('videoId')
-
-        const videoService = new VideoService()
-        const learningService = new LearningProgressService()
-
-        const video = await videoService.getVideoById(videoId)
-        if (!video) {
-          return c.json({ success: false, error: 'Video not found' }, 404)
-        }
-
-        const status = await learningService.getVideoLearningStatus(userId, videoId)
-        return c.json(status)
-      }
-    )
-
-    this.controller.openapi(
-      createRoute({
-        method: 'get',
-        tags: ['Learning'],
-        path: '/videos/{videoId}/segments',
-        request: {
-          params: z.object({
-            videoId: z.number()
-          }),
-          query: z.object({
-            offset: z.number().default(0),
-            limit: z.number().default(10)
-          })
-        },
-        responses: {
-          200: {
-            content: {
-              'application/json': {
-                schema: z.array(segmentResponseSchema)
-              }
-            },
-            description: 'Successfully retrieved video segments'
-          }
-        }
-      }),
-      async (c: any) => {
-        const videoId = Number(c.req.param('videoId'))
-
-        // const videoService = new VideoService()
-        const learningService = new LearningProgressService()
-        const segments = await learningService.getVideoSegments(videoId)
-        return c.json(segments)
-      }
-    )
-
-    // Mark video segment as completed
-    this.controller.openapi(
-      createRoute({
-        method: 'post',
-        tags: ['Learning'],
-        path: '/videos/{videoId}/segments/{segmentId}/complete',
-
-        request: {
-          params: z.object({
-            videoId: z.number(),
-            segmentId: z.number()
-          })
-        },
-        responses: {
-          200: {
-            content: {
-              'application/json': {
-                schema: successResponseSchema
-              }
-            },
-            description: 'Successfully marked segment as completed'
-          }
-        }
-      }),
-      async (c: any) => {
-        const user = c.get('user')
-        const videoId = c.req.param('videoId')
-        const segmentId = c.req.param('segmentId')
-
-        const learningService = new LearningProgressService()
-        await learningService.completeVideoSegment(user.id, videoId, segmentId)
-
-        return c.json({
-          success: true,
-          message: 'Segment marked as completed'
-        })
       }
     )
 
