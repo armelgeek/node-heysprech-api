@@ -70,8 +70,8 @@ export class App {
 
   private initializeSwaggerUI() {
     this.app.doc31('/swagger', () => {
-      const protocol = 'http:'
-      const hostname = 'localhost'
+      const protocol = 'https:'
+      const hostname = 'hf.tiakalo.org'
       const port = Bun.env.NODE_ENV === 'production' ? '' : ':3000'
 
       return {
