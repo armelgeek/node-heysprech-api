@@ -106,7 +106,7 @@ export class VideoController implements Routes {
       createRoute({
         method: 'post',
         path: '/v1/upload-audio',
-        tags: ['Upload'],
+        tags: ['Videos'],
         summary: 'Upload',
         description: 'Upload',
         request: {

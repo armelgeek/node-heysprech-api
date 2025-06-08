@@ -1,6 +1,7 @@
 import * as process from 'node:process'
 import { App } from './app'
-import { PermissionController, UserController } from './infrastructure/controllers'
+import { ExerciseController, PermissionController, UserController } from './infrastructure/controllers'
+import { CategoryController } from './infrastructure/controllers/category.controller'
 import { VideoController } from './infrastructure/controllers/video.controller'
 
 const displayBanner = (port: number | string) => {
@@ -18,11 +19,17 @@ const displayBanner = (port: number | string) => {
 `)
 }
 
-const PORT = Bun.env.PORT || 5000
+const PORT = Bun.env.PORT || 3000
 
 function startServer() {
   try {
-    const app = new App([new UserController(), new VideoController(), new PermissionController()]).getApp()
+    const app = new App([
+      new UserController(),
+      new VideoController(),
+      new PermissionController(),
+      new CategoryController(),
+      new ExerciseController()
+    ]).getApp()
 
     displayBanner(PORT)
     return app

@@ -1,12 +1,27 @@
 import { relations } from 'drizzle-orm'
-import { exerciseOptions, exerciseQuestions, exercises, pronunciations, wordEntries } from './exercise.schema'
+import {
+  exerciseHints,
+  exerciseMedia,
+  exerciseOptions,
+  exerciseQuestions,
+  exercises,
+  pronunciations,
+  wordEntries
+} from './exercise.schema'
+import { videos } from './video.schema'
 
 export const exerciseRelations = relations(exercises, ({ one, many }) => ({
   wordEntry: one(wordEntries, {
     fields: [exercises.wordId],
     references: [wordEntries.id]
   }),
-  questions: many(exerciseQuestions)
+  video: one(videos, {
+    fields: [exercises.videoId],
+    references: [videos.id]
+  }),
+  questions: many(exerciseQuestions),
+  hints: many(exerciseHints),
+  media: many(exerciseMedia)
 }))
 
 export const exerciseQuestionsRelations = relations(exerciseQuestions, ({ one, many }) => ({
@@ -33,5 +48,19 @@ export const pronunciationsRelations = relations(pronunciations, ({ one }) => ({
   wordEntry: one(wordEntries, {
     fields: [pronunciations.wordId],
     references: [wordEntries.id]
+  })
+}))
+
+export const exerciseHintsRelations = relations(exerciseHints, ({ one }) => ({
+  exercise: one(exercises, {
+    fields: [exerciseHints.exerciseId],
+    references: [exercises.id]
+  })
+}))
+
+export const exerciseMediaRelations = relations(exerciseMedia, ({ one }) => ({
+  exercise: one(exercises, {
+    fields: [exerciseMedia.exerciseId],
+    references: [exercises.id]
   })
 }))
