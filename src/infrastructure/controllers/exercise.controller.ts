@@ -56,8 +56,8 @@ const SuccessResponseSchema = z.object({
   message: z.string()
 })
 
-export class ExerciseController {
-  private controller: OpenAPIHono
+export class ExerciseController implements Routes {
+  public controller: OpenAPIHono
 
   constructor() {
     this.controller = new OpenAPIHono()
@@ -68,7 +68,7 @@ export class ExerciseController {
     return this.controller
   }
 
-  private initRoutes() {
+  public initRoutes() {
     // Get all exercises for a video
     this.controller.openapi(
       createRoute({
