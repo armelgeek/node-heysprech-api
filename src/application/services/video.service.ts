@@ -48,6 +48,7 @@ export class VideoService {
       filePath: file.path,
       fileSize: file.size,
       language: options.language || 'de',
+      youtubeId: options.youtubeId || null,
       title: options.title || file.originalname,
       uploadedAt: new Date().toISOString(),
       categoryId: options.categoryId,
