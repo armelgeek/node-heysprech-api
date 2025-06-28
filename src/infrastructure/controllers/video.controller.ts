@@ -52,11 +52,11 @@ const uploadRequestSchema = z.object({
   }),
   categoryId: z.string().optional().openapi({
     description: 'Optional category ID to assign to the video',
-    example: "1"
+    example: '1'
   }),
   difficultyId: z.string().optional().openapi({
     description: 'Optional difficulty level ID to assign to the video',
-    example: "1"
+    example: '1'
   }),
   audioFile: z.custom<File>().openapi({
     type: 'string',
@@ -143,6 +143,8 @@ export class VideoController implements Routes {
       async (c: any) => {
         try {
           const body = await c.req.parseBody()
+          console.log('Raw body data:', body) // Debug log
+
           const file = body.audioFile as File
 
           if (!file || !(file instanceof File)) {
@@ -166,41 +168,50 @@ export class VideoController implements Routes {
             )
           }
 
+          // Récupération des données du FormData (garder en string selon le schéma)
           const formData = {
-            language: body.language as string,
+            language: (body.language as string) || 'de', // Valeur par défaut
             title: body.title as string | undefined,
             youtubeId: body.youtubeId as string | undefined,
-            categoryId: body.categoryId,
-            difficultyId: body.difficultyId
+            categoryId: body.categoryId as string | undefined,
+            difficultyId: body.difficultyId as string | undefined,
+            audioFile: file // Inclure le fichier dans la validation
           }
-          console.log('Form data:', formData)
 
+          console.log('Parsed form data:', {
+            ...formData,
+            audioFile: file ? `File: ${file.name} (${file.size} bytes)` : 'No file'
+          }) // Debug log
+
+          // Validation avec Zod
           const result = uploadRequestSchema.safeParse(formData)
           if (!result.success) {
+            console.error('Validation error:', result.error.errors) // Debug log
             return c.json(
               {
                 success: false,
-                error: `Invalid data: ${result.error.message}`
+                error: `Invalid data: ${result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
               },
               400
             )
           }
 
-          if (formData.categoryId) {
+          // Validation des IDs numériques après validation Zod
+          if (formData.categoryId && (Number.isNaN(Number(formData.categoryId)) || Number(formData.categoryId) <= 0)) {
             return c.json(
               {
                 success: false,
-                error: 'Invalid category ID'
+                error: 'Invalid category ID - must be a positive number'
               },
               400
             )
           }
 
-          if (formData.difficultyId) {
+          if (formData.difficultyId && (Number.isNaN(Number(formData.difficultyId)) || Number(formData.difficultyId) <= 0)) {
             return c.json(
               {
                 success: false,
-                error: 'Invalid difficulty ID'
+                error: 'Invalid difficulty ID - must be a positive number'
               },
               400
             )
@@ -238,8 +249,8 @@ export class VideoController implements Routes {
             language: formData.language,
             title: formData.title,
             youtubeId: formData.youtubeId,
-            categoryId: Number(formData.categoryId),
-            difficultyId: Number(formData.difficultyId)
+            categoryId: formData.categoryId ? Number(formData.categoryId) : undefined, // Conversion au moment de l'utilisation
+            difficultyId: formData.difficultyId ? Number(formData.difficultyId) : undefined // Conversion au moment de l'utilisation
           })
 
           return c.json({
@@ -251,6 +262,7 @@ export class VideoController implements Routes {
           })
         } catch (error: any) {
           console.error('Upload error:', error.message)
+          console.error('Full error:', error) // Debug log complet
           return c.json(
             {
               success: false,
