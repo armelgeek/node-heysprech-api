@@ -207,7 +207,10 @@ export class VideoController implements Routes {
             )
           }
 
-          if (formData.difficultyId && (Number.isNaN(Number(formData.difficultyId)) || Number(formData.difficultyId) <= 0)) {
+          if (
+            formData.difficultyId &&
+            (Number.isNaN(Number(formData.difficultyId)) || Number(formData.difficultyId) <= 0)
+          ) {
             return c.json(
               {
                 success: false,

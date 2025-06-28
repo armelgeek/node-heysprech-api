@@ -8,6 +8,7 @@ export * from './schema'
 export * from './video.schema'
 export * from './learning.schema'
 export * from './category.schema'
+export * from './video-category.schema'
 export {
   exerciseHints,
   exerciseMedia,
