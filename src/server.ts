@@ -7,7 +7,7 @@ import { VideoController } from './infrastructure/controllers/video.controller'
 const displayBanner = (port: number | string) => {
   console.info(`
 \u001B[34m╔══════════════════════════════════════════════════════╗
-║               \u001B[1mMEKO ACADEMY API\u001B[0m\u001B[34m                ║
+║               \u001B[1mHEYSPRECH API\u001B[0m\u001B[34m                ║
 ╠══════════════════════════════════════════════════════╣
 ║                                                      ║
 ║  \u001B[0m🚀 Server started successfully                   \u001B[34m║
