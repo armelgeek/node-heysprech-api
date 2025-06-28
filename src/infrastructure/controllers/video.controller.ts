@@ -50,13 +50,13 @@ const uploadRequestSchema = z.object({
     description: 'Optional YouTube video ID for reference',
     example: 'dQw4w9WgXcQ'
   }),
-  categoryId: z.number().optional().openapi({
+  categoryId: z.string().optional().openapi({
     description: 'Optional category ID to assign to the video',
-    example: 1
+    example: "1"
   }),
-  difficultyId: z.number().optional().openapi({
+  difficultyId: z.string().optional().openapi({
     description: 'Optional difficulty level ID to assign to the video',
-    example: 1
+    example: "1"
   }),
   audioFile: z.custom<File>().openapi({
     type: 'string',
@@ -170,8 +170,8 @@ export class VideoController implements Routes {
             language: body.language as string,
             title: body.title as string | undefined,
             youtubeId: body.youtubeId as string | undefined,
-            categoryId: body.categoryId ? Number(body.categoryId) : undefined,
-            difficultyId: body.difficultyId ? Number(body.difficultyId) : undefined
+            categoryId: body.categoryId ? body.categoryId : undefined,
+            difficultyId: body.difficultyId ? body.difficultyId : undefined
           }
 
           const result = uploadRequestSchema.safeParse(formData)
@@ -185,7 +185,7 @@ export class VideoController implements Routes {
             )
           }
 
-          if (formData.categoryId && Number.isNaN(formData.categoryId)) {
+          if (formData.categoryId) {
             return c.json(
               {
                 success: false,
@@ -195,7 +195,7 @@ export class VideoController implements Routes {
             )
           }
 
-          if (formData.difficultyId && Number.isNaN(formData.difficultyId)) {
+          if (formData.difficultyId) {
             return c.json(
               {
                 success: false,
@@ -218,7 +218,6 @@ export class VideoController implements Routes {
                 const nameWithoutExt = path.basename(baseName, ext)
                 filePath = path.join(baseDir, 'audios', `${nameWithoutExt}-${counter}${ext}`)
               } catch {
-                // Le fichier n'existe pas, on peut utiliser ce nom
                 return filePath
               }
             }
@@ -238,8 +237,8 @@ export class VideoController implements Routes {
             language: formData.language,
             title: formData.title,
             youtubeId: formData.youtubeId,
-            categoryId: formData.categoryId,
-            difficultyId: formData.difficultyId
+            categoryId: Number(formData.categoryId),
+            difficultyId: Number(formData.difficultyId)
           })
 
           return c.json({
