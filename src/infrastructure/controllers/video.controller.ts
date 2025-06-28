@@ -170,9 +170,10 @@ export class VideoController implements Routes {
             language: body.language as string,
             title: body.title as string | undefined,
             youtubeId: body.youtubeId as string | undefined,
-            categoryId: body.categoryId ? body.categoryId : undefined,
-            difficultyId: body.difficultyId ? body.difficultyId : undefined
+            categoryId: body.categoryId,
+            difficultyId: body.difficultyId
           }
+          console.log('Form data:', formData)
 
           const result = uploadRequestSchema.safeParse(formData)
           if (!result.success) {
