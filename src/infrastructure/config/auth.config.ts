@@ -28,8 +28,7 @@ export const auth = betterAuth({
     adminPlugin()
   ],
   database: drizzleAdapter(db, {
-    provider: 'pg',
-    usePlural: true
+    provider: 'pg'
   }),
   baseURL: 'https://hf.tiakalo.org',
   trustedOrigins: ['https://hf.tiakalo.org'],
@@ -55,13 +54,13 @@ export const auth = betterAuth({
     }
   },
   session: {
-    modelName: 'session',
+    modelName: 'sessions',
     additionalFields: {
       impersonatedBy: { type: 'string', default: null, returned: true }
     }
   },
   account: {
-    modelName: 'account'
+    modelName: 'accounts'
   },
   emailAndPassword: {
     enabled: true,
