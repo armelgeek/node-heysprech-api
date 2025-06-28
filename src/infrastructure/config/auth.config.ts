@@ -55,13 +55,13 @@ export const auth = betterAuth({
     }
   },
   session: {
-    modelName: 'sessions',
+    modelName: 'session',
     additionalFields: {
       impersonatedBy: { type: 'string', default: null, returned: true }
     }
   },
   account: {
-    modelName: 'accounts'
+    modelName: 'account'
   },
   emailAndPassword: {
     enabled: true,
